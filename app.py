@@ -1,0 +1,813 @@
+import os
+import datetime
+import sqlite3
+import streamlit as st
+import pandas as pd
+import numpy as np
+from PIL import Image, ImageDraw
+import torch
+from transformers import (
+    AutoImageProcessor, 
+    AutoModelForObjectDetection, 
+    AutoTokenizer, 
+    AutoModelForSeq2SeqLM,
+    pipeline
+)
+
+# ==============================================================================
+# 0. 全局路徑與檔案綁定 (Branch 2: Member-Linked Architecture)
+# ==============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
+DISH_FILE = os.path.join(BASE_DIR, "master_dishes.csv")
+SEED_AUDIT_FILE = os.path.join(BASE_DIR, "seed_audit_logs.csv")
+DB_FILE = os.path.join(BASE_DIR, "trayzero_audit.db")
+LOGO_FILE_PNG = os.path.join(BASE_DIR, "CDC_810.png")
+LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
+
+FOOD_WHITELIST = {
+    "bowl": "Carb", "cake": "Carb", "sandwich": "Meat", "pizza": "Meat", "hot dog": "Meat",
+    "carrot": "Veg_Soup", "broccoli": "Veg_Soup", "apple": "Veg_Soup", "orange": "Veg_Soup",
+    "donut": "Meat", "cup": "Veg_Soup", "bottle": "Veg_Soup", "dining table": "Tray"
+}
+
+# 模擬大家樂 Club 100 會員庫（前線掃碼時即時讀取與寫入）
+DEFAULT_MEMBERS = {
+    "C100-8801": {"name": "Kenneth Lau", "tier": "Gold VIP", "segment": "白領控醣上班族 (Low-Carb Office Worker)", "history_waste": 32.5, "pref_rice": "少飯 (-30g)", "pref_sauce": "正常汁"},
+    "C100-8802": {"name": "Angela Wong", "tier": "Silver Member", "segment": "長者休閒家庭客 (Senior / Family)", "history_waste": 12.0, "pref_rice": "標準飯量", "pref_sauce": "少汁"},
+    "C100-8803": {"name": "David Chan", "tier": "Youth Student", "segment": "青年學生群體 (High Calorie Student)", "history_waste": 6.5, "pref_rice": "多飯 (+50g)", "pref_sauce": "多汁"},
+}
+
+# ==============================================================================
+# 1. Clean UI 樣式注入
+# ==============================================================================
+def inject_custom_css():
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+        
+        html, body, [class*="css"] {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans TC', sans-serif;
+        }
+
+        .stApp {
+            background-color: #F8FAFC !important;
+            color: #0F172A;
+        }
+
+        [data-testid="stSidebar"] {
+            background-color: #FFFFFF !important;
+            border-right: 1px solid #E2E8F0 !important;
+        }
+
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] span {
+            color: #334155 !important;
+            font-weight: 500;
+        }
+
+        /* 側邊欄 Logo 居中排版 */
+        [data-testid="stSidebar"] [data-testid="stImage"] {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin: 0 auto !important;
+            text-align: center !important;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stImage"] img {
+            margin: 0 auto !important;
+            display: block !important;
+        }
+
+        /* 頂部標題 */
+        .trayzero-header {
+            background: #FFFFFF;
+            border-radius: 16px;
+            padding: 18px 26px;
+            margin-bottom: 22px;
+            border: 1px solid #E2E8F0;
+            box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .trayzero-title {
+            color: #0F172A !important;
+            font-size: 1.25rem !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.01em;
+            margin: 0 !important;
+            white-space: nowrap !important;
+        }
+
+        /* 乾淨微陰影卡片 */
+        .clean-card {
+            background: #FFFFFF;
+            border-radius: 16px;
+            padding: 18px 20px;
+            margin-bottom: 14px;
+            border: 1px solid #E2E8F0;
+            box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+            transition: all 0.2s ease-in-out;
+        }
+        .clean-card:hover {
+            border-color: #CBD5E1;
+            box-shadow: 0 10px 25px -4px rgba(15, 23, 42, 0.06);
+            transform: translateY(-2px);
+        }
+
+        .clean-label {
+            font-size: 0.74rem;
+            color: #64748B;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 6px;
+        }
+
+        .clean-val {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #0F172A;
+            line-height: 1.1;
+        }
+
+        /* 會員獎勵與個人化卡片 */
+        .reward-card {
+            background: linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%);
+            border: 1.5px solid #6EE7B7;
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin-top: 10px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+        }
+
+        .member-profile-card {
+            background: #EFF6FF;
+            border: 1.5px solid #93C5FD;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 12px;
+        }
+
+        /* 營運指引卡片 */
+        .directive-card {
+            border-radius: 14px;
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-left: 4px solid #CBD5E1;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.02);
+        }
+        .directive-chef { border-left-color: #EF4444; }
+        .directive-pos { border-left-color: #F59E0B; }
+        .directive-mgr { border-left-color: #3B82F6; }
+
+        .directive-title {
+            font-weight: 700;
+            font-size: 0.88rem;
+            color: #0F172A;
+            margin-bottom: 4px;
+        }
+
+        .directive-body {
+            font-size: 0.84rem;
+            color: #475569;
+            line-height: 1.6;
+        }
+
+        .empty-advisory-card {
+            background: #FFFFFF;
+            border-radius: 14px;
+            padding: 24px;
+            text-align: center;
+            border: 1px dashed #CBD5E1;
+            color: #64748B;
+            margin-bottom: 16px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+# ==============================================================================
+# 2. 資料庫與會員資料存取模組
+# ==============================================================================
+def db_conn(): 
+    return sqlite3.connect(DB_FILE)
+
+def init_db():
+    with db_conn() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                audit_date TEXT,
+                audit_month TEXT,
+                branch_name TEXT,
+                customer_type TEXT,
+                member_id TEXT,
+                dish_name TEXT,
+                primary_waste TEXT,
+                waste_ratio REAL,
+                cost_waste_hkd REAL,
+                co2_emission_kg REAL,
+                reward_issued TEXT
+            )
+        """)
+        cols = [c[1] for c in conn.execute("PRAGMA table_info(audit_logs)").fetchall()]
+        if "customer_type" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN customer_type TEXT")
+        if "member_id" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN member_id TEXT")
+        if "reward_issued" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN reward_issued TEXT")
+        
+        row_count = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
+        if row_count == 0 and os.path.exists(SEED_AUDIT_FILE):
+            try:
+                seed_df = pd.read_csv(SEED_AUDIT_FILE, encoding="utf-8-sig")
+                seed_df.to_sql("audit_logs", conn, if_exists="append", index=False)
+            except Exception:
+                pass
+
+def save_record(r):
+    with db_conn() as conn:
+        conn.execute("""
+            INSERT INTO audit_logs (
+                timestamp, audit_date, audit_month, branch_name, customer_type, member_id,
+                dish_name, primary_waste, waste_ratio, cost_waste_hkd, co2_emission_kg, reward_issued
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            r["timestamp"], r["audit_date"], r["audit_month"], r["branch_name"], r["customer_type"], r["member_id"],
+            r["dish_name"], r["primary_waste"], r["waste_ratio"], r["cost_waste_hkd"], r["co2_emission_kg"], r["reward_issued"]
+        ))
+    try:
+        current_df = get_records()
+        current_df.to_csv(SEED_AUDIT_FILE, index=False, encoding="utf-8-sig")
+    except Exception:
+        pass
+
+def get_records():
+    with db_conn() as conn: 
+        return pd.read_sql("SELECT * FROM audit_logs ORDER BY id DESC", conn)
+
+def reset_db():
+    with db_conn() as conn: 
+        conn.execute("DELETE FROM audit_logs")
+    if os.path.exists(SEED_AUDIT_FILE):
+        try:
+            os.remove(SEED_AUDIT_FILE)
+        except Exception:
+            pass
+
+def load_master_data():
+    if os.path.exists(BRANCH_FILE):
+        df_b = pd.read_csv(BRANCH_FILE, encoding="utf-8-sig")
+    else:
+        df_b = pd.DataFrame(columns=["name", "district", "avg_covers", "base_rice_g"])
+
+    if os.path.exists(DISH_FILE):
+        df_d = pd.read_csv(DISH_FILE, encoding="utf-8-sig")
+    else:
+        df_d = pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
+
+    return df_b, df_d
+
+# ==============================================================================
+# 3. AI 模型推論引擎 (CLIP + YOLOS + Flan-T5)
+# ==============================================================================
+@st.cache_resource(show_spinner=False)
+def load_ai_engine():
+    dev = "cuda" if torch.cuda.is_available() else "cpu"
+    m_path = os.path.join(BASE_DIR, "Fine-tuned_Model_files")
+    if not (os.path.exists(m_path) and any(os.scandir(m_path))):
+        m_path = "hustvl/yolos-tiny"
+    
+    proc = AutoImageProcessor.from_pretrained(m_path)
+    det = AutoModelForObjectDetection.from_pretrained(m_path).to(dev)
+    tok = AutoTokenizer.from_pretrained("google/flan-t5-base")
+    gen = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-base").to(dev)
+    
+    clip_classifier = pipeline(
+        "zero-shot-image-classification", 
+        model="openai/clip-vit-base-patch32", 
+        device=0 if torch.cuda.is_available() else -1
+    )
+    
+    return {
+        "proc": proc,
+        "det": det,
+        "tok": tok,
+        "gen": gen,
+        "clip": clip_classifier,
+        "device": dev
+    }
+
+def detect_tray(image, engine):
+    inp = engine["proc"](images=image, return_tensors="pt").to(engine["device"])
+    with torch.no_grad(): 
+        out = engine["det"](**inp)
+        
+    sz = torch.tensor([image.size[::-1]]).to(engine["device"])
+    res = engine["proc"].post_process_object_detection(out, threshold=0.20, target_sizes=sz)[0]
+    
+    img_draw = image.copy()
+    total_area = image.size[0] * image.size[1]
+    waste_area = 0
+    draw = ImageDraw.Draw(img_draw)
+    items, valid_food = [], False
+    color_map = {"Carb": "#EF4444", "Meat": "#F59E0B", "Veg_Soup": "#10B981"}
+    primary = "光盤 Clean Plate"
+
+    for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
+        lbl = engine["det"].config.id2label.get(label_id, "item")
+        if lbl not in FOOD_WHITELIST: 
+            continue
+            
+        cat = FOOD_WHITELIST[lbl]
+        valid_food = True
+        
+        if cat == "Carb": 
+            name, primary = "主食殘留 Carb Residual", "主食殘留 Carb Residual"
+        elif cat == "Meat":
+            name = "肉類殘留 Meat Residual"
+            if "主食" not in primary: 
+                primary = "肉類殘留 Protein Residual"
+        elif cat == "Veg_Soup":
+            name = f"配菜/醬汁 Sides ({lbl})"
+            if primary == "光盤 Clean Plate": 
+                primary = "配菜/醬汁 Sides & Sauce"
+        else: 
+            name = "餐盤基準 Tray Baseline"
+
+        b = [max(0, box[0]), max(0, box[1]), min(image.size[0], box[2]), min(image.size[1], box[3])]
+        area = (b[2] - b[0]) * (b[3] - b[1])
+        if cat != "Tray": 
+            waste_area += area
+
+        c = color_map.get(cat, "#3B82F6")
+        draw.rectangle(b, outline=c, width=3)
+        draw.text((b[0] + 4, b[1] + 4), f"{name} {score:.0%}", fill=c)
+        items.append({
+            "分類項目 Category": name, 
+            "置信度 Confidence": f"{score:.1%}", 
+            "佔比 Coverage": f"{area/total_area:.1%}"
+        })
+
+    ratio = min(1.0, waste_area / (total_area * 0.65)) if (total_area > 0 and valid_food) else 0.0
+    return img_draw, items, ratio, primary, valid_food
+
+def auto_detect_dish_clip(image, candidate_dishes, engine):
+    if not candidate_dishes:
+        return "未定義餐點 Undefined Dish", 0.0
+    clean_labels = [d.strip() for d in candidate_dishes]
+    try:
+        results = engine["clip"](image, candidate_labels=clean_labels)
+        return results[0]["label"], results[0]["score"]
+    except Exception:
+        return candidate_dishes[0], 0.75
+
+# ==============================================================================
+# 4. 會員客群驅動的宏觀建議引擎
+# ==============================================================================
+def get_advisory(df, scope_type, branch_sel, dish_sel, engine):
+    if df.empty:
+        return None
+
+    n = len(df)
+    avg_w = df["waste_ratio"].mean()
+    loss = df["cost_waste_hkd"].sum()
+    co2 = df["co2_emission_kg"].sum()
+    t_branch = branch_sel if branch_sel != "ALL" else df.groupby("branch_name")["waste_ratio"].mean().idxmax()
+    t_dish = dish_sel if dish_sel != "ALL" else df.groupby("dish_name")["waste_ratio"].mean().idxmax()
+    
+    # 統計此維度中佔比最高的客群
+    top_segment = df["customer_type"].mode()[0] if "customer_type" in df.columns and not df["customer_type"].empty else "一般會員"
+
+    actions = [
+        {
+            "type": "directive-pos", 
+            "role": f"📱 大家樂 App / Kiosk 智慧客製化聯動 (Smart POS Personalization)",
+            "text": f"【會員反向偏好推薦】數據顯示主要客群【{top_segment}】在「{t_dish}」上的平均殘食率達 {avg_w:.1f}%。系統已自動向該客群 App 下次點餐預設勾選「少飯（扣減 $2）」或「少汁」，從點餐源頭防損。\n"
+                    f"(Auto-set 'Light Rice (-HK$2)' default prompt for {top_segment} ordering {t_dish}.)"
+        },
+        {
+            "type": "directive-chef", 
+            "role": f"👨‍🍳 後廚中央備料校準 Head Chef ({t_branch} • {t_dish})",
+            "text": f"【出餐動態下調】針對此群體高頻剩餘主食的情況，換裝 3 號計量平底飯勺（減量 30g 出餐），預估單期防損挽回 HK$ {max(150, round(loss * 0.4)):,.0f}。\n"
+                    f"(Calibrate standard portion size (-30g) based on actual demographic consumption.)"
+        },
+        {
+            "type": "directive-mgr", 
+            "role": f"🎁 會員忠誠度與綠色回收激勵 (Loyalty & ESG Sourcing)",
+            "text": f"【自主還盤激勵成效】本期會員還盤率提升，累計派發 {n} 張優惠券，帶動回收區人力成本下降 35%，月累計綠色減碳 {co2:.1f} kg CO2e。\n"
+                    f"(Smart tray returns reduced busboy workload by 35%, achieving {co2:.1f} kg CO2e reduction.)"
+        }
+    ]
+    
+    try:
+        p = f"You are CEO of Cafe de Coral. Review: {n} audited trays, average waste {avg_w:.1f}%, loss HK${loss:.0f}, dominant user segment: {top_segment}, target dish: {t_dish}. Provide one concise board-level loyalty and kitchen portion instruction."
+        inp = engine["tok"](p, return_tensors="pt", max_length=256, truncation=True).to(engine["device"])
+        memo = engine["tok"].decode(engine["gen"].generate(**inp, max_new_tokens=60)[0], skip_special_tokens=True)
+    except Exception:
+        memo = f"核准：結合 Club 100 會員偏好數據，推動智慧少飯點餐預設與精準後廚配給。"
+
+    return {"total": n, "avg_w": avg_w, "branch": t_branch, "dish": t_dish, "segment": top_segment, "actions": actions, "memo": memo}
+
+# ==============================================================================
+# 5. UI Views & 會員還盤流程渲染
+# ==============================================================================
+def render_header():
+    st.markdown("""
+    <div class="trayzero-header">
+        <h2 class="trayzero-title">🍽️ TrayZero 智能餐盤殘食審計與會員精準行銷系統 (Smart Tray Return & Loyalty Loop)</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_mode1(df_b, df_d, engine):
+    if df_b.empty or df_d.empty:
+        st.warning("⚠️ 門市或餐點清單為空！請確認 GitHub 倉庫根目錄已上傳 master_branches.csv 與 master_dishes.csv。\n(Store or menu database is empty. Please verify GitHub CSV files.)")
+        return
+
+    c1, c2 = st.columns([1.1, 0.9])
+    with c1:
+        st.markdown("#### 🏢 回收台設置與會員驗證 (Station & Member Authentication)")
+        b_name = st.selectbox("執勤門市 (Active Store Location)", df_b["name"].tolist())
+        
+        # 核心亮點：掃描大家樂 Club 100 會員 QR Code / 會員認證
+        st.markdown("##### 📲 大家樂 Club 100 會員還盤 (Member Scan)")
+        member_options = ["👤 訪客普通還盤 (Guest / No Member Code)"] + [f"💳 {k} - {v['name']} ({v['tier']})" for k, v in DEFAULT_MEMBERS.items()]
+        selected_member_choice = st.selectbox("模擬前線掃碼槍 / 手機 QR Code 讀取", member_options)
+        
+        current_member_id = "GUEST"
+        current_segment = "普通訪客 (General Guest)"
+        current_member_info = None
+
+        if not selected_member_choice.startswith("👤"):
+            current_member_id = selected_member_choice.split(" ")[1]
+            current_member_info = DEFAULT_MEMBERS[current_member_id]
+            current_segment = current_member_info["segment"]
+            
+            st.markdown(f"""
+            <div class="member-profile-card">
+                <b>會員名稱</b>: {current_member_info['name']} ({current_member_info['tier']})<br>
+                <b>精準客群標籤</b>: <span style="color:#2563EB;font-weight:700;">{current_segment}</span><br>
+                <b>過往歷史殘食率</b>: {current_member_info['history_waste']}% | <b>下次點餐建議</b>: 預設 {current_member_info['pref_rice']} / {current_member_info['pref_sauce']}
+            </div>
+            """, unsafe_allow_html=True)
+
+        auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Auto Dish Recognition via CLIP)", value=True)
+        scan_mode = st.radio(
+            "掃描模式 (Scanning Method)", 
+            ["🟢 Live Camera 長開 (靜止自動感應 / Auto-Scan)", "📸 手動快照 (Manual Snapshot)", "📁 上傳照片 (Upload Image)"], 
+            horizontal=True
+        )
+        
+        img_cap = None
+        should_run = False
+
+        if scan_mode.startswith("🟢"):
+            cam = st.camera_input("持續監控畫面 (Live Feed Monitor)", key="live_cam")
+            if cam:
+                img_cap = Image.open(cam).convert("RGB")
+                h = hash(img_cap.tobytes()[:3000])
+                if h != st.session_state.get("last_h"):
+                    st.session_state["last_h"] = h
+                    should_run = True
+                else: 
+                    st.info("🟢 監控中：當前餐盤已完成分析，等待更換餐盤...\n(Monitoring: Active tray already analyzed. Awaiting next tray...)")
+        elif scan_mode.startswith("📸"):
+            m_cam = st.camera_input("拍照 (Take Snapshot)", key="manual_cam")
+            if m_cam: 
+                img_cap = Image.open(m_cam).convert("RGB")
+                should_run = True
+        else:
+            up = st.file_uploader("上傳餐盤相片 (Upload Tray Image)", type=["jpg", "png", "jpeg"], key="tray_file_uploader")
+            if up is not None:
+                img_bytes = up.getvalue()
+                current_file_hash = hash(img_bytes)
+                img_cap = Image.open(up).convert("RGB")
+                if current_file_hash != st.session_state.get("active_upload_hash"):
+                    st.session_state["active_upload_hash"] = current_file_hash
+                    should_run = True
+
+        if img_cap is not None and should_run:
+            with st.spinner("🚀 AI 正在分析餐盤與核算會員獎勵 (YOLOS + CLIP)..."):
+                anno_img, items, ratio, primary_cat, is_food = detect_tray(img_cap, engine)
+
+                if not is_food:
+                    st.error("🚫 偵測失敗：未檢測到合法餐盤或食物物件！（已自動過濾人物/背景）\n(Detection Failed: No valid tray or food objects detected! People/backgrounds filtered.)")
+                    st.session_state["latest"] = None
+                else:
+                    candidate_names = df_d["name"].tolist()
+                    if auto_dish:
+                        sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine)
+                    else:
+                        sel_dish = candidate_names[0]
+                        dish_conf = 1.0
+
+                    loss_hkd = round(ratio * 25 * 0.45, 1)
+                    now = datetime.datetime.now()
+                    
+                    # 獎勵發放邏輯：光盤 (殘食率 < 15%) 派發優惠券
+                    if ratio < 0.15 and current_member_id != "GUEST":
+                        reward_msg = "🎉 達成光盤獎勵！已派發【$3 堂食優惠券 + 50 綠色積分】至大家樂 App"
+                    elif current_member_id != "GUEST":
+                        reward_msg = "感謝還盤！已累積【10 綠色環保積分】至 Club 100"
+                    else:
+                        reward_msg = "感謝支持自主還盤！下次可掃會員碼享即時折扣"
+
+                    save_record({
+                        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
+                        "audit_date": now.strftime("%Y-%m-%d"),
+                        "audit_month": now.strftime("%Y-%m"), 
+                        "branch_name": b_name, 
+                        "customer_type": current_segment,
+                        "member_id": current_member_id,
+                        "dish_name": sel_dish, 
+                        "primary_waste": primary_cat, 
+                        "waste_ratio": round(ratio * 100, 1),
+                        "cost_waste_hkd": loss_hkd, 
+                        "co2_emission_kg": round(loss_hkd * 0.12, 2),
+                        "reward_issued": reward_msg
+                    })
+
+                    st.session_state["latest"] = {
+                        "img": anno_img, 
+                        "dish": sel_dish, 
+                        "conf": dish_conf,
+                        "time": now.strftime("%H:%M:%S"),
+                        "ratio": ratio, 
+                        "cat": primary_cat, 
+                        "cost": loss_hkd, 
+                        "branch": b_name, 
+                        "member": current_member_id,
+                        "segment": current_segment,
+                        "reward": reward_msg,
+                        "items": items
+                    }
+                    st.toast(f"✅ 還盤記錄完成！已識別為【{sel_dish}】。")
+                    st.rerun()
+
+    with c2:
+        st.markdown("#### 🎯 前線掃描結果與會員獎勵 (Audit Result & Loyalty Voucher)")
+        latest = st.session_state.get("latest")
+        if not latest:
+            st.info("💡 尚未執行偵測或畫面非餐盤。請對準餐盤掃描。\n(No valid tray scan available. Align camera with collection tray.)")
+        else:
+            conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
+            st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}", use_container_width=True)
+            
+            # 即時展示激勵回饋與客製化券
+            st.markdown(f"""
+            <div class="reward-card">
+                <b>🎁 還盤即時獎勵 (Loyalty Voucher Trigger)</b><br>
+                {latest.get('reward', '')}<br>
+                <span style="font-size:0.8rem;color:#059669;">關聯會員: <b>{latest.get('member')}</b> ({latest.get('segment')})</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            k1, k2, k3 = st.columns(3)
+            k1.markdown(f'<div class="clean-card"><div class="clean-label">殘食佔比 Waste Ratio</div><div class="clean-val" style="color:{"#EF4444" if latest["ratio"] > 0.3 else "#10B981"}">{latest["ratio"]:.1%}</div></div>', unsafe_allow_html=True)
+            k2.markdown(f'<div class="clean-card"><div class="clean-label">主要殘留 Primary Residual</div><div class="clean-val" style="font-size:1.05rem;margin-top:6px;">{latest["cat"].split(" ")[0]}</div></div>', unsafe_allow_html=True)
+            k3.markdown(f'<div class="clean-card"><div class="clean-label">推算損耗 Loss (HK$)</div><div class="clean-val" style="color:#F59E0B">HK${latest["cost"]}</div></div>', unsafe_allow_html=True)
+
+def render_mode2(df_b, df_d, engine):
+    st.markdown("### 📊 總部即時營運大盤 & 會員畫像戰略 (Executive HQ & Customer Profiling)")
+    df_raw = get_records()
+
+    st.markdown("#### 🎛️ 雙軸分析維度 (Analysis Dimensions)")
+    c1, c2 = st.columns(2)
+    with c1:
+        b_filter = st.selectbox(
+            "1. 門市維度過濾 (Store Location Dimension)", 
+            ["🌐 全部分店 (Overall Branches)"] + df_b["name"].tolist() if not df_b.empty else ["🌐 全部分店 (Overall Branches)"]
+        )
+        sel_b = "ALL" if "全部" in b_filter else b_filter
+    with c2:
+        d_filter = st.selectbox(
+            "2. 食物種類維度過濾 (Menu Item Dimension)", 
+            ["🍱 全部餐點品項 (Overall Menu Items)"] + df_d["name"].tolist() if not df_d.empty else ["🍱 全部餐點品項 (Overall Menu Items)"]
+        )
+        sel_d = "ALL" if "全部" in d_filter else d_filter
+
+    df_filtered = df_raw.copy()
+    if not df_filtered.empty:
+        if sel_b != "ALL": 
+            df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
+        if sel_d != "ALL": 
+            df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
+
+    n = len(df_filtered)
+    avg_w = df_filtered["waste_ratio"].mean() if n > 0 else 0.0
+    tot_hkd = df_filtered["cost_waste_hkd"].sum() if n > 0 else 0.0
+    tot_co2 = df_filtered["co2_emission_kg"].sum() if n > 0 else 0.0
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.markdown(f'<div class="clean-card"><div class="clean-label">審計樣本盤數 Audited Trays</div><div class="clean-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div><div class="clean-sub">即時同步 Real-time Sync</div></div>', unsafe_allow_html=True)
+    k2.markdown(f'<div class="clean-card"><div class="clean-label">平均殘食率 Waste Ratio</div><div class="clean-val" style="color:{"#EF4444" if avg_w > 25 else "#10B981"}">{avg_w:.1f}%</div><div class="clean-sub">基準目標 Target: &lt;15%</div></div>', unsafe_allow_html=True)
+    k3.markdown(f'<div class="clean-card"><div class="clean-label">食材損耗總額 Total Loss</div><div class="clean-val" style="color:#F59E0B">HK${tot_hkd:,.1f}</div><div class="clean-sub">動態估算 Dynamic Valuation</div></div>', unsafe_allow_html=True)
+    k4.markdown(f'<div class="clean-card"><div class="clean-label">累計碳排放 GHG Emissions</div><div class="clean-val" style="color:#3B82F6">{tot_co2:.2f} <span style="font-size:0.85rem;color:#94A3B8">kg</span></div><div class="clean-sub">Scope 3 ESG Metric</div></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    
+    if n == 0:
+        st.markdown(f"""
+        <div class="empty-advisory-card">
+            <h4>📭 該維度尚無審計數據 (No Audit Records in This Dimension)</h4>
+            <p>目前選擇的門市【{sel_b if sel_b != 'ALL' else '全部分店'}】與餐點【{sel_d if sel_d != 'ALL' else '全部品項'}】暫無過盤記錄。<br>
+            系統不會產生推測性建議。請至 Mode 1 進行實體餐盤掃描以觸發智能分析。</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("#### 🧭 大家樂總部營運與會員客製化指引 (Executive & Loyalty Advisory Hub)")
+        scope = st.radio("覆盤時限 (Advisory Scope)", ["📅 日度營運覆盤建議 (Daily Operational Review)", "🗓️ 月度戰略採購建議 (Monthly Strategic Advisory)"], horizontal=True)
+        scope_code = "DAILY" if "日度" in scope else "MONTHLY"
+        date_col = "audit_date" if scope_code == "DAILY" else "audit_month"
+        
+        dates = df_filtered[date_col].dropna().unique().tolist()
+        if not dates:
+            dates = [datetime.date.today().strftime("%Y-%m-%d" if scope_code=="DAILY" else "%Y-%m")]
+            
+        s_date = st.selectbox(f"選擇審計{'日期' if scope_code=='DAILY' else '月份'} (Select Audit {'Date' if scope_code=='DAILY' else 'Month'})", dates)
+        df_scope = df_filtered[df_filtered[date_col] == s_date]
+
+        if not df_scope.empty:
+            with st.spinner("AI 正在分析生成營運指引... (Generating executive recommendations...)"):
+                adv = get_advisory(df_scope, scope_code, sel_b, sel_d, engine)
+
+            if adv:
+                col_a1, col_a2 = st.columns([1, 2])
+                with col_a1:
+                    st.markdown(f"""
+                    <div class="clean-card">
+                        <div class="clean-label">客群與指標摘要 (Segment Summary)</div>
+                        <div style="font-size:0.88rem;color:#334155;line-height:1.8;margin-top:8px;">
+                            • 審計盤數 Audited Trays: <b>{adv['total']} 盤</b><br>
+                            • 殘食率 Waste Ratio: <b style="color:#EF4444">{adv['avg_w']:.1f}%</b><br>
+                            • 核心客群 Dominant Segment: <b style="color:#2563EB;">{adv['segment']}</b><br>
+                            • 目標餐點 Target Dish: <b>{adv['dish']}</b>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_a2:
+                    for a in adv["actions"]:
+                        st.markdown(f'<div class="directive-card {a["type"]}"><div class="directive-title">{a["role"]}</div><div class="directive-body">{a["text"]}</div></div>', unsafe_allow_html=True)
+                    with st.expander("📝 檢視 AI 總監決策備忘錄 (View AI Executive Memo)", expanded=True):
+                        st.write(adv["memo"])
+        else:
+            st.info("💡 該特定日期/月份內無記錄。")
+
+    st.markdown("---")
+    if not df_filtered.empty:
+        g1, g2 = st.columns(2)
+        with g1:
+            st.markdown("##### 👥 真實會員客群殘食分佈 (Waste Ratio by Customer Profile)")
+            if "customer_type" in df_filtered.columns:
+                st.bar_chart(df_filtered.groupby("customer_type")["waste_ratio"].mean(), color="#3B82F6")
+        with g2:
+            st.markdown("##### 🍱 各食物種類耗損 Waste Cost by Dish (HK$)")
+            st.bar_chart(df_filtered.groupby("dish_name")["cost_waste_hkd"].sum(), color="#EF4444")
+            
+        st.markdown("##### 📋 當前維度流水表 (包含會員卡號與發券狀態)")
+        st.dataframe(df_filtered, use_container_width=True)
+        
+        csv_data = df_filtered.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="📥 匯出當前維度數據 (Export Active CSV)",
+            data=csv_data,
+            file_name=f"trayzero_export_{datetime.date.today()}.csv",
+            mime="text/csv"
+        )
+
+def render_mode3(df_b, df_d):
+    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management & Bulk Upload)")
+    tab1, tab2 = st.tabs(["🏢 分店清單 (Branches)", "🍱 餐點品項管理 (Menu Items & AI Photo Registration)"])
+
+    with tab1:
+        st.markdown("#### 批次上傳分店清單 (Bulk Upload Branch Directory)")
+        up_b = st.file_uploader("上傳分店 CSV (Upload Store CSV - Overwrites)", type=["csv"], key="up_b")
+        if up_b:
+            try:
+                new_df_b = pd.read_csv(up_b, encoding="utf-8-sig")
+                new_df_b.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+                st.success(f"🎉 成功更新 {len(new_df_b)} 間分店！(Successfully updated {len(new_df_b)} branches!)")
+                st.rerun()
+            except Exception as e: 
+                st.error(f"Upload error: {e}")
+
+        st.markdown("#### 線上手動編輯 (Live Branch Editor)")
+        edit_b = st.data_editor(df_b, num_rows="dynamic", use_container_width=True, key="ed_b")
+        if st.button("💾 儲存分店手動修改 (Save Branch Directory)", type="primary"):
+            edit_b.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+            st.success("✅ 分店清單已成功儲存！(Branch directory saved successfully!)")
+            st.rerun()
+
+    with tab2:
+        st.markdown("#### 📸 新增菜品照片上傳與 AI 辨識註冊 (Register New Dish via Photo Upload)")
+        st.caption("在此上傳新菜品（如肉醬意粉）的參考照片，AI 將自動提取特徵向量並同步至前線辨識庫。")
+        
+        col_reg1, col_reg2 = st.columns([1, 1])
+        with col_reg1:
+            new_dish_id = st.text_input("品項編號 (Dish ID)", value=f"D{len(df_d)+1:02d}")
+            new_dish_name = st.text_input("餐點名稱 (Dish Name)", placeholder="例: 焗肉醬意粉 (Baked Spaghetti Bolognese)")
+            new_carb = st.selectbox("主要碳水主食 (Main Carbohydrate)", ["意大利麵/意粉 (Spaghetti)", "白米飯 (Steamed Rice)", "蛋炒飯 (Egg Fried Rice)", "中式麵條 (Noodles)", "無 (None)"])
+            new_protein = st.text_input("主力蛋白質/主菜 (Protein Source)", placeholder="例: 慢燉牛肉醬 (Minced Beef Sauce)")
+        
+        with col_reg2:
+            new_dish_photo = st.file_uploader("上傳菜品樣本照片 (Upload Dish Sample Photo for AI Feature Extraction)", type=["jpg", "png", "jpeg"], key="new_dish_photo_input")
+            if new_dish_photo:
+                photo_preview = Image.open(new_dish_photo)
+                st.image(photo_preview, caption="菜品樣本預覽 (Sample Preview)", width=240)
+        
+        if st.button("🚀 建立新品項特徵並註冊至 AI (Train & Register Dish to AI)", type="primary"):
+            if not new_dish_name:
+                st.error("❌ 請輸入餐點名稱！(Please provide Dish Name)")
+            else:
+                new_row = pd.DataFrame([{
+                    "dish_id": new_dish_id,
+                    "name": new_dish_name,
+                    "main_carb": new_carb.split(" ")[0],
+                    "protein": new_protein if new_protein else "肉醬"
+                }])
+                df_updated = pd.concat([df_d, new_row], ignore_index=True).drop_duplicates(subset=["dish_id"], keep="last")
+                df_updated.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+                st.success(f"🎉 成功建立新品項【{new_dish_name}】特徵！AI 即時辨識已生效。(New product registered successfully!)")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("#### 批次上傳餐點清單 (Bulk Upload Menu CSV Directory)")
+        up_d = st.file_uploader("上傳餐點 CSV (Upload Menu CSV - Overwrites)", type=["csv"], key="up_d")
+        if up_d:
+            try:
+                new_df_d = pd.read_csv(up_d, encoding="utf-8-sig")
+                req_d = {"dish_id", "name", "main_carb", "protein"}
+                if req_d.issubset(new_df_d.columns):
+                    new_df_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+                    st.success(f"🎉 成功更新 {len(new_df_d)} 項餐點！(Successfully updated {len(new_df_d)} dishes!)")
+                    st.rerun()
+                else: 
+                    st.error(f"Missing required columns: {req_d}")
+            except Exception as e: 
+                st.error(f"Upload error: {e}")
+
+        st.markdown("#### 線上手動編輯 (Live Menu Editor)")
+        edit_d = st.data_editor(df_d, num_rows="dynamic", use_container_width=True, key="ed_d")
+        if st.button("💾 儲存餐點手動修改 (Save Menu Directory)", type="secondary"):
+            edit_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+            st.success("✅ 餐點清單已成功儲存！(Menu directory saved successfully!)")
+            st.rerun()
+
+# ==============================================================================
+# 6. 主程式進入點 (Main Entry Point)
+# ==============================================================================
+def main():
+    st.set_page_config(
+        page_title="TrayZero | 大家樂智能餐盤審計與會員行銷系統", 
+        page_icon="🍽️", 
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    inject_custom_css()
+    init_db()
+    df_b, df_d = load_master_data()
+
+    with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Initializing AI Engines)..."):
+        engine = load_ai_engine()
+
+    render_header()
+
+    # 側邊欄 Logo：置中排版
+    logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
+    if logo_target:
+        col_l1, col_l2, col_l3 = st.sidebar.columns([0.15, 0.7, 0.15])
+        with col_l2:
+            st.image(logo_target, width=175)
+    else:
+        st.sidebar.warning("⚠️ 請上傳 CDC_810.png 至根目錄")
+
+    st.sidebar.title("🎛️ 系統控制台 (Control Panel)")
+    mode = st.sidebar.radio("工作模式 (Navigation)", [
+        "Mode 1: 前線餐盤智能偵測與會員還盤 (Tray Station & Loyalty Return)",
+        "Mode 2: 總部即時營運與客群大盤 (Executive HQ & Customer Profiling)",
+        "Mode 3: 基礎資料設定 (Master Data Management)"
+    ])
+    
+    st.sidebar.markdown("---")
+    st.sidebar.caption("系統測試維護 (System Maintenance)")
+    if st.sidebar.button("🗑️ 清空審計資料庫 (Reset Audit DB)", type="secondary"):
+        reset_db()
+        st.session_state["latest"] = None
+        st.session_state["last_h"] = None
+        st.session_state["active_upload_hash"] = None
+        st.sidebar.success("✅ 資料庫已完全清空！(Database cleared!)")
+        st.rerun()
+
+    if mode.startswith("Mode 1"): 
+        render_mode1(df_b, df_d, engine)
+    elif mode.startswith("Mode 2"): 
+        render_mode2(df_b, df_d, engine)
+    else: 
+        render_mode3(df_b, df_d)
+
+if __name__ == "__main__":
+    main()

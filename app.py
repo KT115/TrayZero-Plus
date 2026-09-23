@@ -126,23 +126,31 @@ def inject_custom_css():
             line-height: 1.1;
         }
 
-        /* Module 4 Cards */
-        .reward-card {
-            background: linear-gradient(135deg, #ECFDF5 0%, #FFFFFF 100%);
-            border: 1.5px solid #6EE7B7;
+        /* CRM Retargeting Cards */
+        .crm-card {
+            background: linear-gradient(135deg, #F0FDF4 0%, #FFFFFF 100%);
+            border: 1.5px solid #86EFAC;
             border-radius: 14px;
-            padding: 16px 18px;
-            margin-top: 10px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08);
+            padding: 18px 20px;
+            margin-bottom: 14px;
+            box-shadow: 0 4px 12px rgba(34, 197, 94, 0.06);
         }
 
-        .member-profile-card {
+        .crm-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #166534;
+            margin-bottom: 6px;
+        }
+
+        .member-live-badge {
             background: #EFF6FF;
-            border: 1.5px solid #93C5FD;
-            border-radius: 14px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
+            border: 1px solid #BFDBFE;
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-bottom: 14px;
+            font-size: 0.86rem;
+            color: #1E40AF;
         }
 
         /* Directives */
@@ -156,8 +164,8 @@ def inject_custom_css():
             box-shadow: 0 2px 8px rgba(15, 23, 42, 0.02);
         }
         .directive-chef { border-left-color: #EF4444; }
-        .directive-pos { border-left-color: #F59E0B; }
-        .directive-mgr { border-left-color: #3B82F6; }
+        .directive-pos { border-left-color: #10B981; }
+        .directive-crm { border-left-color: #3B82F6; }
 
         .directive-title {
             font-weight: 700;
@@ -171,21 +179,11 @@ def inject_custom_css():
             color: #475569;
             line-height: 1.6;
         }
-
-        .empty-advisory-card {
-            background: #FFFFFF;
-            border-radius: 14px;
-            padding: 24px;
-            text-align: center;
-            border: 1px dashed #CBD5E1;
-            color: #64748B;
-            margin-bottom: 16px;
-        }
     </style>
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. Database & Data Storage Layer
+# 2. Database Layer with Seed Persistence
 # ==============================================================================
 def db_conn(): 
     return sqlite3.connect(DB_FILE)
@@ -266,7 +264,7 @@ def load_master_data():
     return df_b, df_d
 
 # ==============================================================================
-# 3. AI Inference Engine (CLIP + YOLOS + Flan-T5)
+# 3. AI Inference Engine
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -360,91 +358,78 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 4. Member Profile Synthesis & Modular Advisory Engine
+# 4. 會員偏好演算與 CRM Retargeting 生成模組 (Core Loyalty Loop Engine)
 # ==============================================================================
-def get_member_profile_insights(member_id, df_records):
-    if not member_id or member_id == "GUEST" or df_records.empty:
+def analyze_member_loyalty_profile(member_id, df_all):
+    """
+    深入分析會員最近用餐過盤數據，推導其點餐偏好及大家樂 CRM Retargeting 行動方針
+    """
+    if not member_id or member_id == "GUEST" or df_all.empty:
         return None
     
-    m_records = df_records[df_records["member_id"] == member_id]
-    if m_records.empty:
+    m_df = df_all[df_all["member_id"] == member_id]
+    if m_df.empty:
         return {
-            "total_returns": 0,
+            "member_id": member_id,
+            "total_visits": 0,
             "avg_waste": 0.0,
-            "clean_count": 0,
-            "pref_prompt": "新會員首次還盤 (First-time Member Return)"
+            "favorite_dish": "尚無資料",
+            "pos_default_rice": "正常飯量",
+            "pos_default_sauce": "正常汁",
+            "retarget_strategy": "發送通用迎新 $5 折扣券吸引二訪",
+            "crm_segment": "新註冊會員 (New Sign-up)"
         }
     
-    total = len(m_records)
-    avg_waste = m_records["waste_ratio"].mean()
-    clean_count = len(m_records[m_records["waste_ratio"] < 15.0])
+    total_visits = len(m_df)
+    avg_waste = m_df["waste_ratio"].mean()
     
-    if avg_waste > 25.0:
-        pref = "少飯 (-30g) • 建議扣減 $2 輕量裝 (Recommended Light Rice Default)"
+    # 統計高頻點餐且吃得最乾淨的「最喜愛餐點」
+    dish_stats = m_df.groupby("dish_name").agg(
+        count=("waste_ratio", "count"),
+        clean_waste=("waste_ratio", "mean")
+    ).reset_index()
+    fav_dish = dish_stats.sort_values(by=["count", "clean_waste"], ascending=[False, True]).iloc[0]["dish_name"]
+    
+    # 主食偏好推導 (若主食殘留頻繁 > 20% 則預設少飯)
+    carb_wastes = m_df[m_df["primary_waste"].str.contains("主食", na=False)]
+    if not carb_wastes.empty and carb_wastes["waste_ratio"].mean() > 20.0:
+        pos_rice = "預設【少飯 (-30g / 立減 $2)】"
+        crm_seg = "控醣輕食族 (Low-Carb Diners)"
     elif avg_waste < 10.0:
-        pref = "標準份量 • 光盤模範客 (Standard Portion Diner)"
+        pos_rice = "預設【正常飯量 (光盤常客)】"
+        crm_seg = "高飽足飽腹族 (Standard/High-Calorie)"
     else:
-        pref = "正常飯量 • 推薦少汁 (Normal Rice, Light Sauce)"
-        
+        pos_rice = "預設【標準飯量】"
+        crm_seg = "均衡飲食族 (Balanced Diners)"
+
+    # 醬汁/配菜推導
+    sauce_wastes = m_df[m_df["primary_waste"].str.contains("配菜|醬汁", na=False)]
+    if not sauce_wastes.empty and sauce_wastes["waste_ratio"].mean() > 25.0:
+        pos_sauce = "預設【少汁 / 醬汁另上】"
+    else:
+        pos_sauce = "預設【正常汁】"
+
+    # 生成給大家樂 CRM 的 Retargeting 具體推廣策略
+    if "控醣" in crm_seg:
+        retarget_strategy = f"針對最愛餐點【{fav_dish}】推送「健康少飯換特飲優惠券」；推廣高蛋白低碳輕食套餐。"
+    elif "高飽足" in crm_seg:
+        retarget_strategy = f"向其大家樂 App 推送【{fav_dish}】加配小食（雞翼/紅豆冰）$8 組合券，拉高客單價。"
+    else:
+        retarget_strategy = f"推送【{fav_dish}】午市立減 $3 現金回訪券，鎖定工作日午市高頻復購。"
+
     return {
-        "total_returns": total,
+        "member_id": member_id,
+        "total_visits": total_visits,
         "avg_waste": avg_waste,
-        "clean_count": clean_count,
-        "pref_prompt": pref
+        "favorite_dish": fav_dish,
+        "pos_default_rice": pos_rice,
+        "pos_default_sauce": pos_sauce,
+        "retarget_strategy": retarget_strategy,
+        "crm_segment": crm_seg
     }
 
-def get_modular_advisory(df, scope_type, branch_sel, dish_sel, engine, mod_marketing, mod_membership):
-    if df.empty:
-        return None
-
-    n = len(df)
-    avg_w = df["waste_ratio"].mean()
-    loss = df["cost_waste_hkd"].sum()
-    co2 = df["co2_emission_kg"].sum()
-    t_branch = branch_sel if branch_sel != "ALL" else df.groupby("branch_name")["waste_ratio"].mean().idxmax()
-    t_dish = dish_sel if dish_sel != "ALL" else df.groupby("dish_name")["waste_ratio"].mean().idxmax()
-    
-    known_members = df[df["member_id"] != "GUEST"]["member_id"].nunique() if "member_id" in df.columns else 0
-
-    actions = []
-    
-    # Module 1 (Core): Kitchen Portion Calibration
-    actions.append({
-        "type": "directive-chef", 
-        "role": f"👨‍🍳 後廚出餐標準校準 Head Chef ({t_branch} • {t_dish})",
-        "text": f"【即時份量校準 Portion Resizing】平均殘食率達 {avg_w:.1f}%。針對「{t_dish}」換裝標準平底飯勺（減量 30g 出餐），預估單期防損挽回 HK$ {max(150, round(loss * 0.4)):,.0f}。\n"
-                f"(Switch to standard size-3 portion scoop on {t_dish} to eliminate raw prep backlog.)"
-    })
-
-    # Module 3 (Marketing): POS / Menu Engineering Prompt
-    if mod_marketing:
-        actions.append({
-            "type": "directive-pos", 
-            "role": "🖥️ 門市點餐機促銷與反向推薦 Smart POS Defaults",
-            "text": f"【點餐機少飯促銷聯動 Kiosk Promo】於自助點餐機對「{t_dish}」置頂彈窗推薦「少飯減扣 $2」輕量裝，從點餐源頭引導小食量客群主動減碳減量。\n"
-                    f"(Activate automated POS prompt offering 'Light Portion (-HK$2)' for {t_dish} to reduce food waste upstream.)"
-        })
-
-    # Module 4 (Membership): Loyalty Return & Retention Loop
-    if mod_membership:
-        actions.append({
-            "type": "directive-mgr", 
-            "role": "🎁 會員忠誠度與綠色回收成效 (Loyalty Loop & ESG)",
-            "text": f"【會員還盤成效分析】本期累計辨識 {known_members} 位會員自主還盤。會員還盤機制帶動回收區人力工時壓降約 35%，本期實現 Scope 3 減碳 {co2:.1f} kg CO2e。\n"
-                    f"(Smart tray returns reduced busboy workload by 35%, achieving {co2:.1f} kg CO2e reduction across {known_members} members.)"
-        })
-
-    try:
-        p = f"You are CEO of Cafe de Coral. Review: {n} audited trays, average waste {avg_w:.1f}%, estimated loss HK${loss:.0f} across {t_branch} for {t_dish}. Provide one concise board-level executive directive."
-        inp = engine["tok"](p, return_tensors="pt", max_length=256, truncation=True).to(engine["device"])
-        memo = engine["tok"].decode(engine["gen"].generate(**inp, max_new_tokens=60)[0], skip_special_tokens=True)
-    except Exception:
-        memo = f"核准：落實 {scope_type} 模組化殘食校準方針，精準優化各門市配給量與出餐流程。"
-
-    return {"total": n, "avg_w": avg_w, "branch": t_branch, "dish": t_dish, "members": known_members, "actions": actions, "memo": memo}
-
 # ==============================================================================
-# 5. UI Views & Modular Component Rendering
+# 5. UI Views & Component Rendering
 # ==============================================================================
 def render_header(modules):
     active_badges = []
@@ -457,8 +442,8 @@ def render_header(modules):
     st.markdown(f"""
     <div class="trayzero-header">
         <div>
-            <h2 class="trayzero-title">🍽️ TrayZero+ 智能餐盤審計與會員增值平台</h2>
-            <div style="font-size:0.75rem; color:#64748B; margin-top:3px; font-weight:600;">啟用模組 (Active Modules): {badge_str}</div>
+            <h2 class="trayzero-title">🍽️ TrayZero+ 大家樂智能餐盤審計與會員閉環平台</h2>
+            <div style="font-size:0.75rem; color:#64748B; margin-top:3px; font-weight:600;">已授權模組 (Licensed Modules): {badge_str}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -472,38 +457,39 @@ def render_mode1(df_b, df_d, engine, modules):
     c1, c2 = st.columns([1.1, 0.9])
     
     with c1:
-        st.markdown("#### 🏢 回收台設置與即時輸入 (Station Settings)")
+        st.markdown("#### 🏢 回收台設置與會員識別 (Station & Member Authentication)")
         b_name = st.selectbox("執勤門市 (Active Store Location)", df_b["name"].tolist())
         
         # ----------------------------------------------------------------------
-        # Module 4: Dynamic Member Input & Profiling (Collapses if Disabled)
+        # 會員輸入與即時偏好分析 (Member Scan & Instant Preference)
         # ----------------------------------------------------------------------
         active_member_id = "GUEST"
         if modules["mod4"]:
-            st.markdown("##### 📲 大家樂 Club 100 會員登記 (Member ID Input)")
+            st.markdown("##### 📲 大家樂 Club 100 會員識別 (Member Scanner)")
             member_col1, member_col2 = st.columns([3, 1])
             with member_col1:
                 raw_member_id = st.text_input(
                     "掃描或輸入會員卡號 (Scan/Enter Member ID)", 
+                    value=st.session_state.get("last_input_member", ""),
                     placeholder="例: C100-8801 / 手機號碼",
-                    help="支援條碼掃描槍自動讀入，留空或勾選訪客將記錄為 GUEST"
+                    help="支援條碼槍掃描讀入。留空或點選訪客將歸檔為 GUEST"
                 )
             with member_col2:
                 st.write("")
                 st.write("")
-                is_guest = st.checkbox("👤 訪客還盤 (Guest)", value=False)
+                is_guest = st.checkbox("👤 訪客還盤", value=False)
             
             active_member_id = "GUEST" if is_guest or not raw_member_id.strip() else raw_member_id.strip()
+            st.session_state["last_input_member"] = raw_member_id
 
             if active_member_id != "GUEST":
-                m_profile = get_member_profile_insights(active_member_id, df_history)
-                if m_profile:
+                prof = analyze_member_loyalty_profile(active_member_id, df_history)
+                if prof:
                     st.markdown(f"""
-                    <div class="member-profile-card">
-                        <b>💳 會員卡號</b>: <span style="color:#2563EB; font-weight:800;">{active_member_id}</span><br>
-                        <b>累計還盤</b>: {m_profile['total_returns']} 次 | <b>光盤次數</b>: {m_profile['clean_count']} 次<br>
-                        <b>歷史平均殘食率</b>: <b>{m_profile['avg_waste']:.1f}%</b><br>
-                        <b>下次點餐建議 (Smart Default)</b>: <span style="color:#059669; font-weight:700;">{m_profile['pref_prompt']}</span>
+                    <div class="member-live-badge">
+                        💳 <b>會員 ID</b>: <b style="color:#2563EB;">{active_member_id}</b> ({prof['crm_segment']})<br>
+                        📊 <b>歷史用餐</b>: 累計還盤 {prof['total_visits']} 次 | 平均殘食率: <b>{prof['avg_waste']:.1f}%</b><br>
+                        💡 <b>目前點餐預設</b>: <span style="color:#059669; font-weight:700;">{prof['pos_default_rice']}</span> / <span style="color:#059669; font-weight:700;">{prof['pos_default_sauce']}</span>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -543,7 +529,7 @@ def render_mode1(df_b, df_d, engine, modules):
                     should_run = True
 
         if img_cap is not None and should_run:
-            with st.spinner("🚀 AI 正在分析餐盤 (YOLOS + CLIP)..."):
+            with st.spinner("🚀 AI 正在分析殘食並提取顧客偏好 (YOLOS + CLIP)..."):
                 anno_img, items, ratio, primary_cat, is_food = detect_tray(img_cap, engine)
 
                 if not is_food:
@@ -560,16 +546,14 @@ def render_mode1(df_b, df_d, engine, modules):
                     loss_hkd = round(ratio * 25 * 0.45, 1)
                     now = datetime.datetime.now()
                     
-                    # Reward logic (Only when Module 4 is Active)
-                    if modules["mod4"]:
-                        if ratio < 0.15 and active_member_id != "GUEST":
+                    # 獎勵及會員記錄標記
+                    if modules["mod4"] and active_member_id != "GUEST":
+                        if ratio < 0.15:
                             reward_msg = "🎉 達成光盤獎勵！已派發【$3 堂食優惠券 + 50 綠色積分】至大家樂 App"
-                        elif active_member_id != "GUEST":
-                            reward_msg = "感謝還盤！已累積【10 綠色環保積分】至會員帳戶"
                         else:
-                            reward_msg = "感謝自主還盤！登記會員卡號可享下次消費立減優惠"
+                            reward_msg = "已累積【10 綠色環保積分】至 Club 100 帳戶"
                     else:
-                        reward_msg = "審計已歸檔 (Module 4 Inactive)"
+                        reward_msg = "訪客還盤完成 (Guest Return)"
 
                     save_record({
                         "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
@@ -598,11 +582,11 @@ def render_mode1(df_b, df_d, engine, modules):
                         "reward": reward_msg,
                         "items": items
                     }
-                    st.toast(f"✅ 還盤記錄完成！已識別為【{sel_dish}】。")
+                    st.toast(f"✅ 還盤數據已同步至大家樂 CRM！會員卡號【{active_member_id}】。")
                     st.rerun()
 
     with c2:
-        st.markdown("#### 🎯 前線掃描結果 (Latest Result)")
+        st.markdown("#### 🎯 前線掃描結果與會員數據 (Audit Result & Member Loop)")
         latest = st.session_state.get("latest")
         if not latest:
             st.info("💡 尚未執行偵測或畫面非餐盤。請對準餐盤掃描。\n(No valid tray scan available.)")
@@ -610,13 +594,14 @@ def render_mode1(df_b, df_d, engine, modules):
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
             st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}", use_container_width=True)
             
-            # Module 4: Loyalty Voucher display
             if modules["mod4"] and latest.get("member") != "GUEST":
+                # 即時展示個人偏好與 Retargeting 聯動卡片
                 st.markdown(f"""
-                <div class="reward-card">
-                    <b>🎁 還盤即時獎勵 (Loyalty Voucher Trigger)</b><br>
-                    {latest.get('reward', '')}<br>
-                    <span style="font-size:0.82rem;color:#059669;">歸檔會員卡號: <b>{latest.get('member')}</b></span>
+                <div class="crm-card">
+                    <div class="crm-title">📲 大家樂 Loyalty Loop 反向偏好更新成功</div>
+                    • <b>關聯會員 ID</b>: <code>{latest.get('member')}</code><br>
+                    • <b>本次還盤結果</b>: {latest.get('reward')}<br>
+                    • <b>自動反哺 POS 規則</b>: 下次點餐系統已預載顧客客製化偏好
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -626,17 +611,11 @@ def render_mode1(df_b, df_d, engine, modules):
             k3.markdown(f'<div class="clean-card"><div class="clean-label">推算損耗 Loss (HK$)</div><div class="clean-val" style="color:#F59E0B">HK${latest["cost"]}</div></div>', unsafe_allow_html=True)
 
 def render_mode2(df_b, df_d, engine, modules):
-    st.markdown("### 📊 總部即時營運大盤 & 戰略建議 (Executive HQ Dashboard)")
+    st.markdown("### 📊 總部營運與會員客群 Retargeting 數據中心 (Executive HQ & Loyalty Engine)")
     df_raw = get_records()
 
     st.markdown("#### 🎛️ 多維度分析透視 (Analysis Dimensions)")
-    
-    # Filter columns dynamically adapt to active modules
-    if modules["mod4"]:
-        c1, c2, c3 = st.columns(3)
-    else:
-        c1, c2 = st.columns(2)
-
+    c1, c2 = st.columns(2)
     with c1:
         b_filter = st.selectbox(
             "1. 門市維度過濾 (Store Location Dimension)", 
@@ -650,36 +629,18 @@ def render_mode2(df_b, df_d, engine, modules):
         )
         sel_d = "ALL" if "全部" in d_filter else d_filter
 
-    sel_m = "ALL"
-    if modules["mod4"]:
-        with c3:
-            member_list = ["👥 全部客群 (Overall)"]
-            if not df_raw.empty and "member_id" in df_raw.columns:
-                unique_members = [m for m in df_raw["member_id"].dropna().unique().tolist() if m != "GUEST"]
-                member_list += unique_members + ["👤 僅查看訪客 (GUEST Only)"]
-            m_filter = st.selectbox("3. 會員卡號維度 (Member Dimension)", member_list)
-            if "全部" in m_filter:
-                sel_m = "ALL"
-            elif "GUEST" in m_filter:
-                sel_m = "GUEST"
-            else:
-                sel_m = m_filter
-
     df_filtered = df_raw.copy()
     if not df_filtered.empty:
         if sel_b != "ALL": 
             df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
         if sel_d != "ALL": 
             df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
-        if modules["mod4"] and sel_m != "ALL":
-            df_filtered = df_filtered[df_filtered["member_id"] == sel_m]
 
     n = len(df_filtered)
     avg_w = df_filtered["waste_ratio"].mean() if n > 0 else 0.0
     tot_hkd = df_filtered["cost_waste_hkd"].sum() if n > 0 else 0.0
     tot_co2 = df_filtered["co2_emission_kg"].sum() if n > 0 else 0.0
 
-    # Module 1 KPI Cards
     k1, k2, k3, k4 = st.columns(4)
     k1.markdown(f'<div class="clean-card"><div class="clean-label">審計樣本盤數 Audited Trays</div><div class="clean-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div><div class="clean-sub">即時同步 Real-time Sync</div></div>', unsafe_allow_html=True)
     k2.markdown(f'<div class="clean-card"><div class="clean-label">平均殘食率 Waste Ratio</div><div class="clean-val" style="color:{"#EF4444" if avg_w > 25 else "#10B981"}">{avg_w:.1f}%</div><div class="clean-sub">基準目標 Target: &lt;15%</div></div>', unsafe_allow_html=True)
@@ -688,15 +649,49 @@ def render_mode2(df_b, df_d, engine, modules):
 
     st.markdown("---")
     
-    if n == 0:
-        st.markdown(f"""
-        <div class="empty-advisory-card">
-            <h4>📭 該維度尚無審計數據 (No Audit Records in This Dimension)</h4>
-            <p>目前選擇的篩選條件暫無過盤記錄。<br>系統不會產生推測性建議。請至 Mode 1 進行實體餐盤掃描以觸發智能分析。</p>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("#### 🧭 營運調配與決策建議 (Operational Advisory Hub)")
+    # --------------------------------------------------------------------------
+    # 核心亮點：Module 4 啟用時呈現「大家樂會員偏好與 Retargeting 數據庫」
+    # --------------------------------------------------------------------------
+    if modules["mod4"] and not df_raw.empty:
+        st.markdown("#### 🎯 大家樂會員偏好與 Retargeting 數據中心 (Loyalty Insights & CRM Feed)")
+        st.caption("透過 TrayZero+ 分析每位會員在各門市的真實殘食偏好，直接輸出給大家樂 Club 100 App 與自助點餐機做客製化預設與精準促銷。")
+
+        unique_members = [m for m in df_raw["member_id"].dropna().unique().tolist() if m != "GUEST"]
+        
+        if unique_members:
+            crm_records = []
+            for mid in unique_members:
+                prof = analyze_member_loyalty_profile(mid, df_raw)
+                crm_records.append({
+                    "會員卡號 (Member ID)": prof["member_id"],
+                    "客群分類 (Segment)": prof["crm_segment"],
+                    "最喜愛餐點 (Favorite Dish)": prof["favorite_dish"],
+                    "平均殘食率 (Avg Waste)": f"{prof['avg_waste']:.1f}%",
+                    "點餐機預設主食 (POS Default Rice)": prof["pos_default_rice"],
+                    "點餐機預設醬汁 (POS Default Sauce)": prof["pos_default_sauce"],
+                    "建議大家樂 CRM 推送優惠券策略 (Retargeting Strategy)": prof["retarget_strategy"]
+                })
+            
+            df_crm = pd.DataFrame(crm_records)
+            st.dataframe(df_crm, use_container_width=True)
+
+            # 支援一鍵導出給大家樂 CRM 系統
+            csv_crm = df_crm.to_csv(index=False).encode("utf-8-sig")
+            st.download_button(
+                label="📥 匯出大家樂 Club 100 Retargeting 數據包 (Export CRM Feed CSV)",
+                data=csv_crm,
+                file_name=f"cdc_loyalty_retarget_feed_{datetime.date.today()}.csv",
+                mime="text/csv",
+                help="可直接導入大家樂 CRM 系統或 Kiosk 後台更新預設選項"
+            )
+        else:
+            st.info("💡 目前資料庫中多為訪客（GUEST）數據，請在 Mode 1 輸入會員卡號以生成個人化 CRM 偏好畫像。")
+
+        st.markdown("---")
+
+    # 決策建議中心 (Advisory Directives)
+    if n > 0:
+        st.markdown("#### 🧭 大家樂總部營運與菜單工程建議 (Executive Advisory Hub)")
         scope = st.radio("覆盤時限 (Advisory Scope)", ["📅 日度營運覆盤建議 (Daily Operational Review)", "🗓️ 月度戰略採購建議 (Monthly Strategic Advisory)"], horizontal=True)
         scope_code = "DAILY" if "日度" in scope else "MONTHLY"
         date_col = "audit_date" if scope_code == "DAILY" else "audit_month"
@@ -709,34 +704,52 @@ def render_mode2(df_b, df_d, engine, modules):
         df_scope = df_filtered[df_filtered[date_col] == s_date]
 
         if not df_scope.empty:
-            with st.spinner("AI 正在分析生成營運指引... (Generating executive recommendations...)"):
-                adv = get_modular_advisory(df_scope, scope_code, sel_b, sel_d, engine, modules["mod3"], modules["mod4"])
+            t_branch = sel_b if sel_b != "ALL" else df_scope.groupby("branch_name")["waste_ratio"].mean().idxmax()
+            t_dish = sel_d if sel_d != "ALL" else df_scope.groupby("dish_name")["waste_ratio"].mean().idxmax()
+            sub_avg_w = df_scope["waste_ratio"].mean()
+            sub_loss = df_scope["cost_waste_hkd"].sum()
 
-            if adv:
-                col_a1, col_a2 = st.columns([1, 2])
-                with col_a1:
-                    extra_metric = f"• 活躍會員數: <b>{adv['members']} 人</b><br>" if modules["mod4"] else ""
+            c_adv1, c_adv2 = st.columns([1, 2])
+            with c_adv1:
+                st.markdown(f"""
+                <div class="clean-card">
+                    <div class="clean-label">當期指標摘要 (Scope Summary)</div>
+                    <div style="font-size:0.88rem;color:#334155;line-height:1.8;margin-top:8px;">
+                        • 審計盤數: <b>{len(df_scope)} 盤</b><br>
+                        • 殘食率: <b style="color:#EF4444">{sub_avg_w:.1f}%</b><br>
+                        • 目標門市: <b>{t_branch}</b><br>
+                        • 目標餐點: <b>{t_dish}</b>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            with c_adv2:
+                # 廚房端指令
+                st.markdown(f"""
+                <div class="directive-card directive-chef">
+                    <div class="directive-title">👨‍🍳 後廚出餐計量標準校準 Head Chef ({t_branch} • {t_dish})</div>
+                    <div class="directive-body">【即時份量校準】平均殘食率達 {sub_avg_w:.1f}%。針對「{t_dish}」換裝標準平底飯勺（每份減量 30g 出餐），單期預估防損挽回 HK$ {max(150, round(sub_loss * 0.4)):,.0f}。</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # POS / Kiosk 端指令 (Module 3 / 4)
+                if modules["mod3"] or modules["mod4"]:
                     st.markdown(f"""
-                    <div class="clean-card">
-                        <div class="clean-label">當期指標摘要 (Scope Summary)</div>
-                        <div style="font-size:0.88rem;color:#334155;line-height:1.8;margin-top:8px;">
-                            • 審計盤數 Audited Trays: <b>{adv['total']} 盤</b><br>
-                            • 殘食率 Waste Ratio: <b style="color:#EF4444">{adv['avg_w']:.1f}%</b><br>
-                            {extra_metric}
-                            • 目標門市 Target Branch: <b>{adv['branch']}</b><br>
-                            • 目標餐點 Target Dish: <b>{adv['dish']}</b>
-                        </div>
+                    <div class="directive-card directive-pos">
+                        <div class="directive-title">🖥️ 點餐機 (Kiosk) 與大家樂 App 反向客製化連動</div>
+                        <div class="directive-body">【智慧預設下發】系統已自動將高頻剩餘「{t_dish}」主食之會員，於點餐終端預設勾選「少飯（立減 $2）」或「少汁」，在點餐階段源頭減廢。</div>
                     </div>
                     """, unsafe_allow_html=True)
-                with col_a2:
-                    for a in adv["actions"]:
-                        st.markdown(f'<div class="directive-card {a["type"]}"><div class="directive-title">{a["role"]}</div><div class="directive-body">{a["text"]}</div></div>', unsafe_allow_html=True)
-                    with st.expander("📝 檢視 AI 總監決策備忘錄 (View AI Executive Memo)", expanded=True):
-                        st.write(adv["memo"])
-        else:
-            st.info("💡 該特定日期/月份內無記錄。")
 
-    # Module 2 (Analytics) Deep-Dive Sections (Collapses if Module 2 Disabled)
+                # CRM Retargeting 端指令
+                if modules["mod4"]:
+                    st.markdown(f"""
+                    <div class="directive-card directive-crm">
+                        <div class="directive-title">🎯 大家樂 CRM 精準行銷與二次回購推廣 (Retargeting Action)</div>
+                        <div class="directive-body">【會員偏好標籤同步】已提煉顧客吃得最乾淨的「最愛餐品」，向其 Club 100 App 發放專屬優惠券促成二次復購，提升顧客黏著度。</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    # 深度圖表分析 (Module 2)
     if modules["mod2"] and not df_filtered.empty:
         st.markdown("---")
         st.markdown("#### 📈 Module 2: 深度商業智慧與數據洞察 (BI Deep Dive)")
@@ -747,23 +760,6 @@ def render_mode2(df_b, df_d, engine, modules):
         with g2:
             st.markdown("##### 🍱 各食物種類耗損 Waste Cost by Dish (HK$)")
             st.bar_chart(df_filtered.groupby("dish_name")["cost_waste_hkd"].sum(), color="#EF4444")
-            
-        if modules["mod4"] and "member_id" in df_filtered.columns:
-            m_stat = df_filtered[df_filtered["member_id"] != "GUEST"].groupby("member_id")["waste_ratio"].mean()
-            if not m_stat.empty:
-                st.markdown("##### 👥 會員卡號平均殘食率分佈 (Waste Ratio by Member ID)")
-                st.bar_chart(m_stat, color="#10B981")
-
-        st.markdown("##### 📋 當前維度流水帳 (Active Audit Records)")
-        st.dataframe(df_filtered, use_container_width=True)
-        
-        csv_data = df_filtered.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            label="📥 匯出當前維度數據 (Export Active CSV)",
-            data=csv_data,
-            file_name=f"trayzero_plus_export_{datetime.date.today()}.csv",
-            mime="text/csv"
-        )
 
 def render_mode3(df_b, df_d):
     st.markdown("### ⚙️ 基礎資料管理 (Master Data Management & Bulk Upload)")
@@ -826,9 +822,13 @@ def render_mode3(df_b, df_d):
         if up_d:
             try:
                 new_df_d = pd.read_csv(up_d, encoding="utf-8-sig")
-                new_df_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-                st.success(f"🎉 成功更新 {len(new_df_d)} 項餐點！(Successfully updated {len(new_df_d)} dishes!)")
-                st.rerun()
+                req_d = {"dish_id", "name", "main_carb", "protein"}
+                if req_d.issubset(new_df_d.columns):
+                    new_df_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+                    st.success(f"🎉 成功更新 {len(new_df_d)} 項餐點！(Successfully updated {len(new_df_d)} dishes!)")
+                    st.rerun()
+                else: 
+                    st.error(f"Missing required columns: {req_d}")
             except Exception as e: 
                 st.error(f"Upload error: {e}")
 
@@ -840,11 +840,11 @@ def render_mode3(df_b, df_d):
             st.rerun()
 
 # ==============================================================================
-# 6. Main Pipeline with Modular Toggles
+# 6. Main Pipeline
 # ==============================================================================
 def main():
     st.set_page_config(
-        page_title="TrayZero+ | 模組化智能餐盤審計與會員增值平台", 
+        page_title="TrayZero+ | 大家樂智能餐盤審計與會員閉環平台", 
         page_icon="🍽️", 
         layout="wide",
         initial_sidebar_state="expanded"
@@ -865,9 +865,6 @@ def main():
     else:
         st.sidebar.warning("⚠️ 請上傳 CDC_810.png 至根目錄")
 
-    # --------------------------------------------------------------------------
-    # Dynamic Modular Feature Toggles
-    # --------------------------------------------------------------------------
     st.sidebar.title("🧩 功能模組授權 (Modules)")
     mod_1 = st.sidebar.checkbox("M1: 營運監控 (Ops Core)", value=True, disabled=True, help="基礎核心模組，無法停用")
     mod_2 = st.sidebar.checkbox("M2: 深度分析 (BI Analytics)", value=True, help="啟用門市交叉報表、深度圖表與 CSV 導出")
@@ -901,7 +898,6 @@ def main():
         st.sidebar.success("✅ 資料庫已完全清空！(Database cleared!)")
         st.rerun()
 
-    # Route according to mode and active modules
     if mode.startswith("Mode 1"): 
         render_mode1(df_b, df_d, engine, active_modules)
     elif mode.startswith("Mode 2"): 

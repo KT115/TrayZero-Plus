@@ -1,0 +1,19 @@
+# Web Framework & Interface
+streamlit>=1.35.0
+
+# Deep Learning & Multi-modal Transformer Engines
+torch>=2.2.0
+torchvision>=0.17.0
+transformers>=4.40.0
+accelerate>=0.28.0
+
+# Computer Vision & Image Processing
+pillow>=10.2.0
+numpy>=1.26.0
+
+# Data Analytics & Tabular Operations
+pandas>=2.2.0
+
+# Audio/Tokenizer Helper Utilities (Transformers Dependency)
+sentencepiece>=0.2.0
+protobuf>=4.25.0

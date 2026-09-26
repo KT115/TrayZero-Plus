@@ -50,9 +50,6 @@ def inject_safe_css():
         :root {
             --cdc-red: #DC2626 !important;
             --cdc-amber: #D97706 !important;
-            --cdc-logo-gold: #EAA424 !important;
-            --cdc-amber-light: #FFFBEB !important;
-            --cdc-dark: #0F172A !important;
             --text-color: #0F172A !important;
             --background-color: #F8FAFC !important;
             --secondary-background-color: #FFFFFF !important;
@@ -70,25 +67,31 @@ def inject_safe_css():
             color: #0F172A !important;
         }
 
-        /* 頂部 Box 改為大家樂 Logo 金黃色系 */
+        /* -----------------------------------------------------------
+           核心修復 1: 頂部 Box 改為精準大家樂暖紅橘漸變 Style (圖二風格)
+        ----------------------------------------------------------- */
         .pos-header-banner {
-            background: linear-gradient(135deg, #FFFDF5 0%, #FEF9E7 100%) !important;
-            border-radius: 12px;
-            padding: 18px 24px;
-            margin-bottom: 20px;
-            border: 1.5px solid #FDE68A;
-            border-left: 8px solid #EAA424 !important;
-            box-shadow: 0 4px 14px rgba(234, 164, 36, 0.12);
+            background: linear-gradient(135deg, #C2301A 0%, #D95D1A 48%, #D87B18 100%) !important;
+            border-radius: 14px !important;
+            padding: 16px 24px !important;
+            margin-bottom: 22px !important;
+            box-shadow: 0 4px 14px rgba(194, 48, 26, 0.22) !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            display: flex !important;
+            align-items: center !important;
         }
         .pos-header-title {
-            color: #78350F !important;
+            color: #FFFFFF !important;
             font-size: 1.45rem !important;
             font-weight: 900 !important;
             margin: 0 !important;
-            letter-spacing: -0.01em;
+            letter-spacing: 0.02em !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
 
-        /* 側邊欄樣式 */
+        /* -----------------------------------------------------------
+           核心修復 2: 側邊欄 Logo 絕對水平置中對齊
+        ----------------------------------------------------------- */
         [data-testid="stSidebar"] {
             background-color: #FFFFFF !important;
             border-right: 1.5px solid #E2E8F0 !important;
@@ -98,10 +101,15 @@ def inject_safe_css():
             display: flex !important;
             justify-content: center !important;
             align-items: center !important;
-            margin: 0 auto 16px auto !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            margin-bottom: 16px !important;
+            width: 100% !important;
+            text-align: center !important;
         }
-        [data-testid="stSidebar"] [data-testid="stImage"] img {
-            margin: 0 auto !important;
+        [data-testid="stSidebar"] [data-testid="stImage"] > img {
+            margin-left: auto !important;
+            margin-right: auto !important;
             display: block !important;
             max-width: 175px !important;
         }
@@ -145,11 +153,11 @@ def inject_safe_css():
             visibility: visible !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] {
-            border-bottom: 3px solid #EAA424 !important;
+            border-bottom: 3px solid #D95D1A !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] p,
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] span {
-            color: #D97706 !important;
+            color: #C2301A !important;
             font-weight: 900 !important;
         }
 
@@ -169,7 +177,7 @@ def inject_safe_css():
             font-weight: 600 !important;
         }
 
-        /* 大家樂電子票券卡 (Digital Coupon Card) */
+        /* 大家樂電子票券卡 */
         .pos-coupon-card {
             background: #FFFBEB !important;
             border: 2px dashed #D97706 !important;
@@ -314,7 +322,6 @@ def init_db():
             )
         """)
 
-        # 種子菜單初始化 (保障車仔麵永遠存在)
         dishes_count = conn.execute("SELECT COUNT(*) FROM master_dishes_db").fetchone()[0]
         if dishes_count == 0:
             init_dishes = [
@@ -696,12 +703,10 @@ def analyze_member_loyalty_profile(member_id, df_all):
 # 6. Mode Renderers (Fast-Casual POS Layout)
 # ==============================================================================
 def render_header():
-    # 核心修復 5 & 8: 標題改為「🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統」，Box 改為金黃 Logo 色系，移除副標題與尖峰標籤
+    # 核心修復 1: 頂部 Box 改為精準大家樂暖紅橘漸變 Style (圖二風格)
     st.markdown("""
     <div class="pos-header-banner">
-        <div>
-            <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統</div>
-        </div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -720,7 +725,6 @@ def render_mode1(engine, modules):
         st.markdown("#### 🏢 會員識別與還盤掃描 (Member Scan & Ingest)")
         b_name = st.selectbox("執勤門市 (Active Store Location)", df_b["name"].tolist())
         
-        # 核心修復 6: 不用 Tick 是否會員，有輸入就是會員卡號，沒輸入就是「員工」
         active_member_id = "STAFF"
         if modules.get("mod4", True):
             st.markdown("##### 📲 大家樂 Club 100 會員識別 (Member Scanner)")
@@ -836,7 +840,6 @@ def render_mode1(engine, modules):
                 st.rerun()
 
     with c2:
-        # 核心修復 7: 標題改為「🎯 即時判斷結果與獎勵(Live Ticket)」
         st.markdown("#### 🎯 即時判斷結果與獎勵(Live Ticket)")
         latest = st.session_state.get("latest")
         if not latest:
@@ -845,7 +848,6 @@ def render_mode1(engine, modules):
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
             st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
             
-            # 電子卡券顯示
             if modules.get("mod4", True) and latest.get("member") != "STAFF":
                 st.markdown(f"""
                 <div class="pos-coupon-card">
@@ -892,7 +894,6 @@ def render_mode1(engine, modules):
                 </div>
                 """, unsafe_allow_html=True)
 
-            # 後廚即時校準卡
             st.markdown(f"""
             <div class="pos-directive-card">
                 <b style="color:#0F172A; font-size:0.9rem;">👨‍🍳 大家樂後廚計量校準 (Kitchen Advisory)</b><br>
@@ -1175,12 +1176,11 @@ def main():
     with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Loading AI Engines)..."):
         engine = load_ai_engine()
 
-    # 核心修復 1: 側邊欄頂部換回 Client Logo 圖片 (從專案根目錄載入 CDC_810)
+    # 側邊欄頂部 Logo：已設定置中樣式
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
     if logo_target:
         st.sidebar.image(logo_target, width=175)
 
-    # 核心修復 3: 移除「● 審計連線正常 (Sync 100%)」
     st.sidebar.markdown("""
     <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:10px 14px; margin-bottom:16px;">
         <div style="font-size:0.75rem; font-weight:800; color:#92400E;">現正執勤門市 (STORE)</div>
@@ -1209,7 +1209,7 @@ def main():
         "mod4": mod_4
     }
 
-    # 核心修復 2, 4, 5, 8: 渲染更新後的簡潔標題橫幅
+    # 渲染大家樂暖紅橘漸變標題橫幅 (圖二風格)
     render_header()
 
     if mode.startswith("Mode 1"): 

@@ -15,7 +15,7 @@ from transformers import (
 )
 
 # ==============================================================================
-# 0. 必須是第一個呼叫的 Streamlit 命令
+# 0. Primary Streamlit Execution Configuration
 # ==============================================================================
 st.set_page_config(
     page_title="TrayZero+ | 大家樂智能餐盤審計與會員閉環平台", 
@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# 1. 檔案路徑與安全 UI 樣式定義 (零 Hardcode)
+# 1. Global Paths & Strict High-Contrast CSS Enforcement
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
@@ -39,9 +39,21 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
+# Strict exclusion list for tableware, utensils, and beverages
+CONTAINER_AND_BEVERAGE_BLOCKLIST = {
+    "cup", "bottle", "wine glass", "bowl", "dining table", 
+    "knife", "fork", "spoon", "chopsticks", "person", "chair"
+}
+
 def inject_safe_css():
     st.markdown("""
     <style>
+        :root {
+            --text-color: #0F172A !important;
+            --background-color: #F8FAFC !important;
+            --secondary-background-color: #FFFFFF !important;
+        }
+
         .stApp {
             background-color: #F8FAFC !important;
             color: #0F172A !important;
@@ -53,6 +65,70 @@ def inject_safe_css():
             color: #0F172A !important;
         }
 
+        /* 1. All Widget Labels */
+        label[data-testid="stWidgetLabel"],
+        div[data-testid="stWidgetLabel"] label,
+        div[data-testid="stWidgetLabel"] p,
+        div[data-testid="stWidgetLabel"] span {
+            color: #0F172A !important;
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        /* 2. Radio Options & Checkboxes */
+        div[data-testid="stRadio"] [role="radiogroup"] label,
+        div[data-testid="stRadio"] [role="radiogroup"] label p,
+        div[data-testid="stRadio"] [role="radiogroup"] label span,
+        div[data-testid="stCheckbox"] label p,
+        div[data-testid="stCheckbox"] label span {
+            color: #0F172A !important;
+            font-size: 0.92rem !important;
+            font-weight: 600 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        /* 3. Tabs (Active & Inactive tabs in Mode 3) */
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
+            background: transparent !important;
+            padding: 10px 18px !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] p,
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] span {
+            color: #475569 !important;
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] {
+            border-bottom: 3px solid #2563EB !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] p,
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] span {
+            color: #2563EB !important;
+            font-weight: 800 !important;
+        }
+
+        /* 4. Text Inputs, Number Inputs, and Select Boxes */
+        input[type="text"], 
+        input[type="number"],
+        div[data-baseweb="input"] input,
+        div[data-baseweb="select"] div {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #94A3B8 !important;
+            font-weight: 600 !important;
+        }
+        input::placeholder {
+            color: #64748B !important;
+            opacity: 1 !important;
+            font-weight: 500 !important;
+        }
+
+        /* 5. Custom Card Styling */
         .trayzero-header {
             background: #FFFFFF !important;
             border-radius: 12px;
@@ -67,75 +143,6 @@ def inject_safe_css():
             font-weight: 800 !important;
             margin: 0 !important;
         }
-
-        [data-testid="stSidebar"] {
-            background-color: #FFFFFF !important;
-            border-right: 1px solid #E2E8F0 !important;
-        }
-        [data-testid="stSidebar"] p, 
-        [data-testid="stSidebar"] label, 
-        [data-testid="stSidebar"] span {
-            color: #1E293B !important;
-            font-weight: 600 !important;
-        }
-
-        [data-testid="stSidebar"] [data-testid="stImage"] {
-            display: flex !important;
-            justify-content: center !important;
-            align-items: center !important;
-            margin: 0 auto !important;
-            text-align: center !important;
-        }
-        [data-testid="stSidebar"] [data-testid="stImage"] img {
-            margin: 0 auto !important;
-            display: block !important;
-        }
-
-        button[data-baseweb="tab"] {
-            color: #475569 !important;
-            font-size: 0.98rem !important;
-            font-weight: 700 !important;
-            background: transparent !important;
-            padding: 10px 18px !important;
-        }
-        button[data-baseweb="tab"][aria-selected="true"] {
-            color: #2563EB !important;
-            border-bottom: 3px solid #2563EB !important;
-        }
-        button[data-baseweb="tab"] p,
-        button[data-baseweb="tab"] span,
-        button[data-baseweb="tab"] div {
-            color: inherit !important;
-            font-weight: 700 !important;
-        }
-
-        input[type="text"], 
-        div[data-baseweb="select"] > div,
-        div[data-baseweb="base-input"] {
-            background-color: #FFFFFF !important;
-            color: #0F172A !important;
-            border: 1.5px solid #CBD5E1 !important;
-            border-radius: 8px !important;
-            font-weight: 600 !important;
-        }
-        div[data-baseweb="select"] * {
-            color: #0F172A !important;
-        }
-
-        button[kind="primary"] {
-            background-color: #2563EB !important;
-            color: #FFFFFF !important;
-            font-weight: 700 !important;
-            border-radius: 8px !important;
-        }
-        button[kind="secondary"] {
-            background-color: #FFFFFF !important;
-            color: #0F172A !important;
-            border: 1.5px solid #CBD5E1 !important;
-            font-weight: 700 !important;
-            border-radius: 8px !important;
-        }
-
         .clean-card {
             background: #FFFFFF !important;
             border-radius: 12px;
@@ -157,7 +164,6 @@ def inject_safe_css():
             color: #0F172A !important;
             line-height: 1.1;
         }
-
         .crm-card {
             background: #F0FDF4 !important;
             border: 1.5px solid #86EFAC !important;
@@ -166,7 +172,6 @@ def inject_safe_css():
             margin-bottom: 12px;
             color: #14532D !important;
         }
-
         .member-live-badge {
             background: #EFF6FF !important;
             border: 1.5px solid #BFDBFE !important;
@@ -176,7 +181,6 @@ def inject_safe_css():
             font-size: 0.88rem;
             color: #1E3A8A !important;
         }
-
         .directive-card {
             border-radius: 10px;
             padding: 12px 16px;
@@ -192,7 +196,7 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. 純動態 CSV 讀取與寫入模組 (零 Hardcode)
+# 2. File-Driven Persistence Layer (Zero Hardcoding)
 # ==============================================================================
 def get_live_branches():
     if os.path.exists(BRANCH_FILE):
@@ -222,11 +226,7 @@ def get_live_dishes():
 def save_live_dishes(df):
     df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
 
-# ------------------------------------------------------------------------------
-# 新增功能：動態獎勵規則引擎 CSV (master_rewards.csv)
-# ------------------------------------------------------------------------------
 def get_live_rewards():
-    """讀取獎勵規則，若無則建立預設階梯"""
     if os.path.exists(REWARD_FILE):
         try:
             df = pd.read_csv(REWARD_FILE, encoding="utf-8-sig")
@@ -248,7 +248,6 @@ def save_live_rewards(df):
     df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
 
 def evaluate_customer_rewards(waste_ratio_pct):
-    """根據殘食佔比判定發放的多重獎勵清單"""
     df_r = get_live_rewards()
     if df_r.empty:
         return ["已累積 10 綠色環保積分"]
@@ -257,7 +256,6 @@ def evaluate_customer_rewards(waste_ratio_pct):
     if active_rules.empty:
         return ["已累積 10 綠色環保積分"]
 
-    # 依殘食率上限排序，由小到大匹配最優獎勵
     active_rules["max_waste_ratio"] = pd.to_numeric(active_rules["max_waste_ratio"], errors="coerce").fillna(100.0)
     matched = active_rules[active_rules["max_waste_ratio"] >= waste_ratio_pct].sort_values(by="max_waste_ratio", ascending=True)
 
@@ -268,7 +266,7 @@ def evaluate_customer_rewards(waste_ratio_pct):
         return ["已完成還盤 (未符合獎勵門檻)"]
 
 # ==============================================================================
-# 3. 審計流水資料庫與 CSV 雙向同步
+# 3. Dual-Layer Audit Store (SQLite + CSV Sync)
 # ==============================================================================
 def db_conn(): 
     return sqlite3.connect(DB_FILE)
@@ -350,7 +348,7 @@ def reset_db():
             pass
 
 # ==============================================================================
-# 4. AI 雙核心辨識引擎
+# 4. Multi-Modal Vision Engine (CLIP + YOLOS)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -411,7 +409,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     top_pred = clip_res[0]["label"]
     top_score = clip_res[0]["score"]
     
-    # 判斷是否為光盤
     if "乾淨的光盤" in top_pred and top_score > 0.40:
         return img_draw, [{"分類項目 Category": "光盤 Clean Plate", "置信度 Confidence": f"{top_score:.1%}", "佔比 Coverage": "0.0%"}], 0.0, "光盤 Clean Plate", True
 
@@ -431,14 +428,23 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         accent_color = "#10B981"
 
     for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
-        lbl = engine["det"].config.id2label.get(label_id, "item")
-        if lbl in ["dining table", "bed", "chair", "person"]:
+        lbl = engine["det"].config.id2label.get(label_id, "item").lower()
+        
+        # 1. Block tableware, utensils, and beverages
+        if lbl in CONTAINER_AND_BEVERAGE_BLOCKLIST:
             continue
             
         b = [max(0, box[0]), max(0, box[1]), min(image.size[0], box[2]), min(image.size[1], box[3])]
-        area = (b[2] - b[0]) * (b[3] - b[1])
+        box_w = b[2] - b[0]
+        box_h = b[3] - b[1]
+        area = box_w * box_h
         
-        if area > total_area * 0.75:
+        # 2. Ignore excessive background bounds
+        if area > total_area * 0.70:
+            continue
+            
+        # 3. Ignore vertical cup/glass items situated in the upper tray sector
+        if b[1] < image.size[1] * 0.45 and (box_h / max(1, box_w) > 1.3):
             continue
             
         waste_area += area
@@ -467,7 +473,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 5. 會員 Loyalty Loop 分析
+# 5. Member Profile Synthesis (Loyalty Engine)
 # ==============================================================================
 def analyze_member_loyalty_profile(member_id, df_all):
     if not member_id or member_id == "GUEST" or df_all.empty:
@@ -531,7 +537,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 6. 前端頁面模組
+# 6. Mode Renderers
 # ==============================================================================
 def render_header(modules):
     active_badges = []
@@ -645,7 +651,6 @@ def render_mode1(engine, modules):
                 now = datetime.datetime.now()
                 waste_pct = round(ratio * 100, 1)
                 
-                # 核心功能：呼叫可自訂的獎勵規則引擎
                 if modules.get("mod4", True) and active_member_id != "GUEST":
                     rewards_list = evaluate_customer_rewards(waste_pct)
                     reward_msg = " • ".join(rewards_list)
@@ -689,7 +694,7 @@ def render_mode1(engine, modules):
             st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
         else:
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
-            st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}", use_container_width=True)
+            st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
             
             if modules.get("mod4", True) and latest.get("member") != "GUEST":
                 st.markdown(f"""
@@ -715,7 +720,7 @@ def render_mode2(engine, modules):
 
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl2:
-        if st.button("🔄 刷新即時數據 (Reload Live Data)", use_container_width=True):
+        if st.button("🔄 刷新即時數據 (Reload Live Data)"):
             st.rerun()
 
     c1, c2 = st.columns(2)
@@ -753,7 +758,7 @@ def render_mode2(engine, modules):
     st.markdown("---")
     st.markdown("#### 📋 即時審計記錄（即時讀取自 seed_audit_logs.csv）")
     if not df_filtered.empty:
-        st.dataframe(df_filtered, use_container_width=True)
+        st.dataframe(df_filtered)
         csv_download = df_filtered.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             label="📥 匯出當前維度 CSV 審計日誌",
@@ -785,7 +790,7 @@ def render_mode2(engine, modules):
                 })
             
             df_crm = pd.DataFrame(crm_records)
-            st.dataframe(df_crm, use_container_width=True)
+            st.dataframe(df_crm)
 
             csv_crm = df_crm.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
@@ -828,13 +833,11 @@ def render_mode3():
         "🎁 殘食門檻獎勵階梯配置 (Incentive Tiers CSV)"
     ])
 
-    # --------------------------------------------------------------------------
     # Tab 1: 門市即時管理
-    # --------------------------------------------------------------------------
     with tab1:
         df_b_current = get_live_branches()
         st.markdown("#### 🏢 門市清單即時編輯 (Live Branches)")
-        edit_b = st.data_editor(df_b_current, num_rows="dynamic", use_container_width=True, key="live_branch_editor")
+        edit_b = st.data_editor(df_b_current, num_rows="dynamic", key="live_branch_editor")
         
         c_b1, c_b2 = st.columns([1, 1])
         with c_b1:
@@ -857,9 +860,7 @@ def render_mode3():
             except Exception as e:
                 st.error(f"匯入錯誤: {e}")
 
-    # --------------------------------------------------------------------------
     # Tab 2: 菜品清單即時管理
-    # --------------------------------------------------------------------------
     with tab2:
         df_d_current = get_live_dishes()
         
@@ -901,7 +902,7 @@ def render_mode3():
 
         st.markdown("---")
         st.markdown("#### 🍱 現有餐點清單即時編輯 (Live Menu CSV)")
-        edit_d = st.data_editor(df_d_current, num_rows="dynamic", use_container_width=True, key="live_dish_editor")
+        edit_d = st.data_editor(df_d_current, num_rows="dynamic", key="live_dish_editor")
         
         c_d1, c_d2 = st.columns([1, 1])
         with c_d1:
@@ -924,9 +925,7 @@ def render_mode3():
             except Exception as e:
                 st.error(f"匯入錯誤: {e}")
 
-    # --------------------------------------------------------------------------
-    # Tab 3: 核心新功能：動態獎勵規則階梯配置 (Live Rewards Tier Engine)
-    # --------------------------------------------------------------------------
+    # Tab 3: 動態獎勵階梯配置
     with tab3:
         st.markdown("#### 🎁 會員還盤獎勵階梯配置 (Incentive Tiers Configuration)")
         st.caption("管理員可在此自訂當客戶達到特定殘食佔比門檻時，自動派發的單一或多項組合獎勵（如不同 Coupon、折扣券、積分等）。所有設定即時寫入 master_rewards.csv。")
@@ -961,7 +960,7 @@ def render_mode3():
 
         st.markdown("---")
         st.markdown("##### 📝 線上即時編輯獎勵規則 (Live Rewards Editor)")
-        edit_r = st.data_editor(df_r_current, num_rows="dynamic", use_container_width=True, key="live_reward_editor")
+        edit_r = st.data_editor(df_r_current, num_rows="dynamic", key="live_reward_editor")
         
         c_save_r1, c_save_r2 = st.columns([1, 1])
         with c_save_r1:
@@ -974,7 +973,7 @@ def render_mode3():
             st.download_button("📥 下載目前 master_rewards.csv", data=csv_r_export, file_name="master_rewards.csv", mime="text/csv")
 
 # ==============================================================================
-# 7. 主程式進入點
+# 7. Application Entry Point
 # ==============================================================================
 def main():
     inject_safe_css()

@@ -13,6 +13,7 @@ from transformers import (
     AutoModelForSeq2SeqLM,
     pipeline
 )
+import altair as alt
 
 # ==============================================================================
 # 0. Primary Streamlit Execution Configuration
@@ -217,6 +218,14 @@ def inject_safe_css():
             background: #FFFBEB !important;
             border-color: #FDE68A !important;
         }
+        .pos-metric-card.green-glow {
+            background: #F0FDF4 !important;
+            border-color: #86EFAC !important;
+        }
+        .pos-metric-card.purple-glow {
+            background: #FAF5FF !important;
+            border-color: #D8B4FE !important;
+        }
         .pos-metric-label {
             font-size: 0.72rem;
             font-weight: 800;
@@ -228,6 +237,24 @@ def inject_safe_css():
             font-size: 1.7rem;
             font-weight: 900;
             line-height: 1.1;
+        }
+
+        .chart-box {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 18px 20px;
+            border: 1.5px solid #E2E8F0;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+            margin-bottom: 16px;
+        }
+        .chart-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #0F172A;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .pos-directive-card {
@@ -258,7 +285,7 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. Database Connection & Schema Setup (修復欄位不一致問題)
+# 2. Database Connection & Schema Setup
 # ==============================================================================
 def db_conn(): 
     return sqlite3.connect(DB_FILE)
@@ -282,7 +309,6 @@ def init_db():
             )
         """)
 
-        # 檢測並強制修復資料表，若欄位結構與預期不符則安全重置
         dish_cols = [c[1] for c in conn.execute("PRAGMA table_info(master_dishes_db)").fetchall()]
         if dish_cols and len(dish_cols) != 4:
             conn.execute("DROP TABLE IF EXISTS master_dishes_db")
@@ -330,13 +356,11 @@ def init_db():
             )
         """)
 
-        # 寫入預設雲端連接
         conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
         conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('dishes_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=dishes",))
         conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('branches_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=branches",))
         conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('rewards_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=rewards",))
 
-        # 採用具名欄位 INSERT，杜絕欄位數量不匹配拋錯
         init_dishes = [
             ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
             ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
@@ -996,6 +1020,9 @@ def render_mode1(engine, modules):
             </div>
             """, unsafe_allow_html=True)
 
+# ==============================================================================
+# Mode 2: 總部即時營運大盤 (升級：時間維度、優惠券統計、剩菜排行、殘食率趨勢)
+# ==============================================================================
 def render_mode2(engine, modules):
     df_b = get_live_branches()
     df_d = get_live_dishes()
@@ -1003,11 +1030,21 @@ def render_mode2(engine, modules):
 
     st.markdown("### 📊 總部即時營運大盤與會員客群 Retargeting 數據中心")
 
+    # 頂部控制列：時間維度 (Period) + 重新整理
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
+    with col_ctrl1:
+        period_filter = st.radio(
+            "統計時間維度 (Period)",
+            ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 本月 (This Month)", "📈 本年度 (This Year)", "🌐 全部歷史 (All Time)"],
+            horizontal=True,
+            index=4
+        )
     with col_ctrl2:
+        st.write("")
         if st.button("🔄 刷新即時數據 (Reload Live Data)"):
             st.rerun()
 
+    # 門市與餐點篩選
     c1, c2 = st.columns(2)
     with c1:
         b_filter = st.selectbox(
@@ -1023,6 +1060,26 @@ def render_mode2(engine, modules):
         sel_d = "ALL" if "全部" in d_filter else d_filter
 
     df_filtered = df_raw.copy()
+
+    # 時間維度過濾演算法
+    if not df_filtered.empty and "timestamp" in df_filtered.columns:
+        df_filtered["parsed_dt"] = pd.to_datetime(df_filtered["timestamp"], errors="coerce")
+        now_dt = datetime.datetime.now()
+        
+        if "本日" in period_filter:
+            today_str = now_dt.strftime("%Y-%m-%d")
+            df_filtered = df_filtered[df_filtered["parsed_dt"].dt.strftime("%Y-%m-%d") == today_str]
+        elif "本周" in period_filter:
+            start_of_week = now_dt - datetime.timedelta(days=now_dt.weekday())
+            start_of_week_date = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            df_filtered = df_filtered[df_filtered["parsed_dt"] >= start_of_week_date]
+        elif "本月" in period_filter:
+            cur_month_str = now_dt.strftime("%Y-%m")
+            df_filtered = df_filtered[df_filtered["parsed_dt"].dt.strftime("%Y-%m") == cur_month_str]
+        elif "本年度" in period_filter:
+            cur_year_str = str(now_dt.year)
+            df_filtered = df_filtered[df_filtered["parsed_dt"].dt.strftime("%Y") == cur_year_str]
+
     if not df_filtered.empty:
         if sel_b != "ALL": 
             df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
@@ -1034,7 +1091,12 @@ def render_mode2(engine, modules):
     tot_hkd = df_filtered["cost_waste_hkd"].sum() if n > 0 else 0.0
     tot_co2 = df_filtered["co2_emission_kg"].sum() if n > 0 else 0.0
 
-    k1, k2, k3, k4 = st.columns(4)
+    # 優惠券發放統計 (Coupon Count)
+    coupon_records = df_filtered[df_filtered["reward_issued"].str.contains("券|獎|積分", na=False)] if n > 0 else pd.DataFrame()
+    total_coupons = len(coupon_records[coupon_records["member_id"] != "STAFF"])
+
+    # 頂部 KPI 卡片 (擴增 Coupon 指標)
+    k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">審計樣本盤數</div><div class="pos-metric-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div></div>', unsafe_allow_html=True)
     with k2:
@@ -1043,12 +1105,102 @@ def render_mode2(engine, modules):
         st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">食材損耗總額</div><div class="pos-metric-val" style="color:#D97706">HK${tot_hkd:,.1f}</div></div>', unsafe_allow_html=True)
     with k4:
         st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">累計碳排放</div><div class="pos-metric-val" style="color:#2563EB">{tot_co2:.2f} <span style="font-size:0.85rem;color:#94A3B8">kg</span></div></div>', unsafe_allow_html=True)
+    with k5:
+        st.markdown(f'<div class="pos-metric-card green-glow"><div class="pos-metric-label">已派發會員券數</div><div class="pos-metric-val" style="color:#059669">{total_coupons} <span style="font-size:0.85rem;color:#94A3B8">張</span></div></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # ==========================================================================
+    # 全新儀表板圖表區塊 (Dashboards)
+    # ==========================================================================
+    chart_c1, chart_c2 = st.columns(2)
+
+    with chart_c1:
+        st.markdown('<div class="chart-box"><div class="chart-title">🍱 剩菜最多餐品排行 (Top Waste by Dish)</div>', unsafe_allow_html=True)
+        if not df_filtered.empty and "dish_name" in df_filtered.columns:
+            dish_waste = df_filtered.groupby("dish_name").agg(
+                avg_waste=("waste_ratio", "mean"),
+                total_loss=("cost_waste_hkd", "sum"),
+                tray_count=("id", "count")
+            ).reset_index().sort_values(by="avg_waste", ascending=False)
+            
+            dish_waste["avg_waste_pct"] = dish_waste["avg_waste"].round(1)
+            
+            chart_dish = alt.Chart(dish_waste).mark_bar(cornerRadius=6, color="#D97706").encode(
+                x=alt.X('avg_waste_pct:Q', title='平均殘食率 (%)'),
+                y=alt.Y('dish_name:N', sort='-x', title='餐點品項'),
+                tooltip=['dish_name', 'avg_waste_pct', 'total_loss', 'tray_count']
+            ).properties(height=260)
+            
+            st.altair_chart(chart_dish, width="stretch")
+        else:
+            st.info("💡 目前篩選區間尚無餐點數據")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    with chart_c2:
+        st.markdown('<div class="chart-box"><div class="chart-title">📈 平均殘食率時間趨勢 (Waste Ratio Trending)</div>', unsafe_allow_html=True)
+        if not df_filtered.empty and "parsed_dt" in df_filtered.columns and df_filtered["parsed_dt"].notna().any():
+            trend_df = df_filtered.dropna(subset=["parsed_dt"]).copy()
+            
+            # 依週期聚合時間欄位
+            if "本日" in period_filter:
+                trend_df["time_group"] = trend_df["parsed_dt"].dt.strftime("%H:00")
+            elif "本周" in period_filter or "本月" in period_filter:
+                trend_df["time_group"] = trend_df["parsed_dt"].dt.strftime("%m-%d")
+            else:
+                trend_df["time_group"] = trend_df["parsed_dt"].dt.strftime("%Y-%m")
+
+            trend_grouped = trend_df.groupby("time_group")["waste_ratio"].mean().reset_index()
+            trend_grouped["waste_ratio"] = trend_grouped["waste_ratio"].round(1)
+
+            chart_trend = alt.Chart(trend_grouped).mark_line(
+                point=alt.OverlayMarkDef(color="#DC2626", size=60),
+                color="#DC2626",
+                strokeWidth=3
+            ).encode(
+                x=alt.X('time_group:N', title='時間時間軸'),
+                y=alt.Y('waste_ratio:Q', title='殘食率 (%)', scale=alt.Scale(domain=[0, 100])),
+                tooltip=['time_group', 'waste_ratio']
+            ).properties(height=260)
+
+            st.altair_chart(chart_trend, width="stretch")
+        else:
+            st.info("💡 目前篩選區間尚無趨勢數據")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # 優惠券與會員激勵派發分析圖
+    st.markdown('<div class="chart-box"><div class="chart-title">🎟️ 會員獎勵與優惠券派發分佈 (Coupon Distribution Analytics)</div>', unsafe_allow_html=True)
+    if not df_filtered.empty and "reward_issued" in df_filtered.columns:
+        member_rewards = df_filtered[df_filtered["member_id"] != "STAFF"].copy()
+        
+        def extract_tier(text):
+            if "【" in str(text) and "】" in str(text):
+                return str(text).split("【")[1].split("】")[0]
+            return "其他/綠色積分"
+
+        if not member_rewards.empty:
+            member_rewards["tier_type"] = member_rewards["reward_issued"].apply(extract_tier)
+            tier_counts = member_rewards.groupby("tier_type")["id"].count().reset_index()
+            tier_counts.columns = ["獎勵等級", "派發數量"]
+
+            chart_reward = alt.Chart(tier_counts).mark_bar(cornerRadius=6, color="#059669").encode(
+                x=alt.X('派發數量:Q', title='已發放券數'),
+                y=alt.Y('獎勵等級:N', sort='-x', title='獎勵等級名稱'),
+                color=alt.Color('獎勵等級:N', scale=alt.Scale(scheme='greens')),
+                tooltip=['獎勵等級', '派發數量']
+            ).properties(height=180)
+            
+            st.altair_chart(chart_reward, width="stretch")
+        else:
+            st.info("💡 目前區間尚無會員兌換獎勵記錄（目前均為員工還盤）")
+    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("#### 📋 即時審計記錄（即時讀取自 seed_audit_logs.csv）")
     if not df_filtered.empty:
-        st.dataframe(df_filtered)
-        csv_download = df_filtered.to_csv(index=False).encode("utf-8-sig")
+        display_df = df_filtered.drop(columns=["parsed_dt"], errors="ignore")
+        st.dataframe(display_df)
+        csv_download = display_df.to_csv(index=False).encode("utf-8-sig")
         st.download_button(
             label="📥 匯出當前維度 CSV 審計日誌",
             data=csv_download,
@@ -1303,7 +1455,6 @@ def main():
     """, unsafe_allow_html=True)
 
     st.sidebar.markdown("##### 觸控模式選擇 (TOUCH NAVIGATION)")
-    # 修復 empty label 警告：提供標籤文字並隱藏
     mode = st.sidebar.radio(
         label="模式選擇導航",
         options=[

@@ -222,10 +222,6 @@ def inject_safe_css():
             background: #F0FDF4 !important;
             border-color: #86EFAC !important;
         }
-        .pos-metric-card.purple-glow {
-            background: #FAF5FF !important;
-            border-color: #D8B4FE !important;
-        }
         .pos-metric-label {
             font-size: 0.72rem;
             font-weight: 800;
@@ -265,6 +261,25 @@ def inject_safe_css():
             border: 1px solid #E2E8F0;
             border-left: 5px solid #DC2626 !important;
             box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
+        }
+
+        .export-control-box {
+            background: #FFFFFF;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+
+        .empty-state-box {
+            background: #FFFFFF;
+            border: 2px dashed #CBD5E1;
+            border-radius: 14px;
+            padding: 40px;
+            text-align: center;
+            color: #64748B;
+            margin-top: 20px;
+            margin-bottom: 20px;
         }
 
         button[kind="primary"] {
@@ -1006,7 +1021,7 @@ def render_mode1(engine, modules):
                 st.markdown(f"""
                 <div class="pos-metric-card">
                     <div class="pos-metric-label">推算損耗 LOSS</div>
-                    <div class="pos-metric-val" style="color:#0F172A;">HK${latest["cost"]}</div>
+                    <div class="pos-metric-val" style="font-size:0.F72A; color:#0F172A;">HK${latest["cost"]}</div>
                     <div style="font-size:0.75rem; color:#059669; font-weight:800; margin-top:4px;">{'零浪費標準' if ratio_val == 0.0 else '單盤損耗'}</div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1021,7 +1036,7 @@ def render_mode1(engine, modules):
             """, unsafe_allow_html=True)
 
 # ==============================================================================
-# Mode 2: 總部即時營運大盤 (升級：時間維度、優惠券統計、剩菜排行、殘食率趨勢)
+# Mode 2: 總部即時營運大盤 (升級防禦性空狀態 Empty State)
 # ==============================================================================
 def render_mode2(engine, modules):
     df_b = get_live_branches()
@@ -1030,7 +1045,6 @@ def render_mode2(engine, modules):
 
     st.markdown("### 📊 總部即時營運大盤與會員客群 Retargeting 數據中心")
 
-    # 頂部控制列：時間維度 (Period) + 重新整理
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl1:
         period_filter = st.radio(
@@ -1044,7 +1058,6 @@ def render_mode2(engine, modules):
         if st.button("🔄 刷新即時數據 (Reload Live Data)"):
             st.rerun()
 
-    # 門市與餐點篩選
     c1, c2 = st.columns(2)
     with c1:
         b_filter = st.selectbox(
@@ -1061,10 +1074,9 @@ def render_mode2(engine, modules):
 
     df_filtered = df_raw.copy()
 
-    # 時間維度過濾演算法
+    now_dt = datetime.datetime.now()
     if not df_filtered.empty and "timestamp" in df_filtered.columns:
         df_filtered["parsed_dt"] = pd.to_datetime(df_filtered["timestamp"], errors="coerce")
-        now_dt = datetime.datetime.now()
         
         if "本日" in period_filter:
             today_str = now_dt.strftime("%Y-%m-%d")
@@ -1087,15 +1099,36 @@ def render_mode2(engine, modules):
             df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
 
     n = len(df_filtered)
-    avg_w = df_filtered["waste_ratio"].mean() if n > 0 else 0.0
-    tot_hkd = df_filtered["cost_waste_hkd"].sum() if n > 0 else 0.0
-    tot_co2 = df_filtered["co2_emission_kg"].sum() if n > 0 else 0.0
 
-    # 優惠券發放統計 (Coupon Count)
-    coupon_records = df_filtered[df_filtered["reward_issued"].str.contains("券|獎|積分", na=False)] if n > 0 else pd.DataFrame()
-    total_coupons = len(coupon_records[coupon_records["member_id"] != "STAFF"])
+    # ==========================================================================
+    # 防禦性空狀態 (Empty State Default 頁面)
+    # ==========================================================================
+    if n == 0:
+        st.markdown(f"""
+        <div class="empty-state-box">
+            <div style="font-size: 2.5rem; margin-bottom: 10px;">📭</div>
+            <div style="font-size: 1.2rem; font-weight: 800; color: #0F172A; margin-bottom: 6px;">
+                目前選定的門市或時間區間尚無審計數據
+            </div>
+            <div style="font-size: 0.9rem; color: #64748B; font-weight: 600;">
+                執勤分店：<b>{b_filter}</b> | 時間區間：<b>{period_filter}</b><br>
+                請前往 <b>Mode 1: 前線回收感應台</b> 執行實體餐盤掃描，系統將自動即時記錄數據並點亮大盤。
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        return
 
-    # 頂部 KPI 卡片 (擴增 Coupon 指標)
+    # 有資料時正常渲染 KPI 與圖表
+    avg_w = df_filtered["waste_ratio"].mean()
+    tot_hkd = df_filtered["cost_waste_hkd"].sum()
+    tot_co2 = df_filtered["co2_emission_kg"].sum()
+
+    if "reward_issued" in df_filtered.columns:
+        coupon_records = df_filtered[df_filtered["reward_issued"].str.contains("券|獎|積分", na=False)]
+        total_coupons = len(coupon_records[coupon_records["member_id"] != "STAFF"]) if not coupon_records.empty else 0
+    else:
+        total_coupons = 0
+
     k1, k2, k3, k4, k5 = st.columns(5)
     with k1:
         st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">審計樣本盤數</div><div class="pos-metric-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div></div>', unsafe_allow_html=True)
@@ -1110,14 +1143,11 @@ def render_mode2(engine, modules):
 
     st.markdown("---")
 
-    # ==========================================================================
-    # 全新儀表板圖表區塊 (Dashboards)
-    # ==========================================================================
     chart_c1, chart_c2 = st.columns(2)
 
     with chart_c1:
         st.markdown('<div class="chart-box"><div class="chart-title">🍱 剩菜最多餐品排行 (Top Waste by Dish)</div>', unsafe_allow_html=True)
-        if not df_filtered.empty and "dish_name" in df_filtered.columns:
+        if "dish_name" in df_filtered.columns:
             dish_waste = df_filtered.groupby("dish_name").agg(
                 avg_waste=("waste_ratio", "mean"),
                 total_loss=("cost_waste_hkd", "sum"),
@@ -1133,16 +1163,13 @@ def render_mode2(engine, modules):
             ).properties(height=260)
             
             st.altair_chart(chart_dish, width="stretch")
-        else:
-            st.info("💡 目前篩選區間尚無餐點數據")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with chart_c2:
         st.markdown('<div class="chart-box"><div class="chart-title">📈 平均殘食率時間趨勢 (Waste Ratio Trending)</div>', unsafe_allow_html=True)
-        if not df_filtered.empty and "parsed_dt" in df_filtered.columns and df_filtered["parsed_dt"].notna().any():
+        if "parsed_dt" in df_filtered.columns and df_filtered["parsed_dt"].notna().any():
             trend_df = df_filtered.dropna(subset=["parsed_dt"]).copy()
             
-            # 依週期聚合時間欄位
             if "本日" in period_filter:
                 trend_df["time_group"] = trend_df["parsed_dt"].dt.strftime("%H:00")
             elif "本周" in period_filter or "本月" in period_filter:
@@ -1164,13 +1191,10 @@ def render_mode2(engine, modules):
             ).properties(height=260)
 
             st.altair_chart(chart_trend, width="stretch")
-        else:
-            st.info("💡 目前篩選區間尚無趨勢數據")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 優惠券與會員激勵派發分析圖
     st.markdown('<div class="chart-box"><div class="chart-title">🎟️ 會員獎勵與優惠券派發分佈 (Coupon Distribution Analytics)</div>', unsafe_allow_html=True)
-    if not df_filtered.empty and "reward_issued" in df_filtered.columns:
+    if "reward_issued" in df_filtered.columns:
         member_rewards = df_filtered[df_filtered["member_id"] != "STAFF"].copy()
         
         def extract_tier(text):
@@ -1192,56 +1216,97 @@ def render_mode2(engine, modules):
             
             st.altair_chart(chart_reward, width="stretch")
         else:
-            st.info("💡 目前區間尚無會員兌換獎勵記錄（目前均為員工還盤）")
+            st.info("💡 目前篩選區間尚無會員兌換獎勵記錄")
     st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    st.markdown("#### 📋 即時審計記錄（即時讀取自 seed_audit_logs.csv）")
-    if not df_filtered.empty:
-        display_df = df_filtered.drop(columns=["parsed_dt"], errors="ignore")
-        st.dataframe(display_df)
-        csv_download = display_df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            label="📥 匯出當前維度 CSV 審計日誌",
-            data=csv_download,
-            file_name=f"trayzero_audit_export_{datetime.date.today()}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("💡 當前篩選維度下尚無資料。請在 Mode 1 進行實體餐盤掃描，系統將自動即時存入 CSV。")
+    st.markdown("#### 📥 匯出指定 Period 審計與客群資料 (Data Export Engine)")
 
-    st.markdown("---")
-
-    if modules.get("mod4", True) and not df_raw.empty:
-        st.markdown("#### 🎯 大家樂會員偏好與 Retargeting 數據中心")
-        unique_members = [m for m in df_raw["member_id"].dropna().unique().tolist() if m != "STAFF"]
+    with st.container():
+        st.markdown('<div class="export-control-box">', unsafe_allow_html=True)
+        col_exp_mode, col_exp_dates = st.columns([1.2, 2.8])
         
-        if unique_members:
-            crm_records = []
-            for mid in unique_members:
-                prof = analyze_member_loyalty_profile(mid, df_raw)
-                crm_records.append({
-                    "會員卡號 (Member ID)": prof["member_id"],
-                    "客群分類 (Segment)": prof["crm_segment"],
-                    "最喜愛餐點 (Favorite Dish)": prof["favorite_dish"],
-                    "平均殘食率": f"{prof['avg_waste']:.1f}%",
-                    "點餐機預設主食 (POS Default Rice)": prof["pos_default_rice"],
-                    "點餐機預設醬汁 (POS Default Sauce)": prof["pos_default_sauce"],
-                    "建議大家樂 CRM 推送優惠券策略": prof["retarget_strategy"]
-                })
-            
-            df_crm = pd.DataFrame(crm_records)
-            st.dataframe(df_crm)
-
-            csv_crm = df_crm.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(
-                label="📥 匯出大家樂 Club 100 Retargeting 數據包 (CSV)",
-                data=csv_crm,
-                file_name=f"cdc_loyalty_retarget_feed_{datetime.date.today()}.csv",
-                mime="text/csv"
+        with col_exp_mode:
+            export_mode = st.radio(
+                "選擇匯出區間模式 (Export Scope)",
+                ["連動上方週期 (" + period_filter.split(" ")[1] + ")", "自訂自選日期範圍 (Custom Range)"]
             )
+        
+        df_for_export = df_raw.copy()
+        export_filename_tag = ""
 
-    if n > 0 and (modules.get("mod1", True) or modules.get("mod3", True)):
+        if not df_for_export.empty and "timestamp" in df_for_export.columns:
+            df_for_export["parsed_dt"] = pd.to_datetime(df_for_export["timestamp"], errors="coerce")
+            
+            if "連動上方週期" in export_mode:
+                df_final_export = df_filtered.copy()
+                export_filename_tag = period_filter.split(" ")[1]
+            else:
+                with col_exp_dates:
+                    d_col1, d_col2 = st.columns(2)
+                    min_date = df_for_export["parsed_dt"].min().date() if df_for_export["parsed_dt"].notna().any() else datetime.date.today()
+                    max_date = datetime.date.today()
+                    with d_col1:
+                        start_d = st.date_input("開始日期 (Start Date)", value=min_date)
+                    with d_col2:
+                        end_d = st.date_input("結束日期 (End Date)", value=max_date)
+
+                start_dt = datetime.datetime.combine(start_d, datetime.time.min)
+                end_dt = datetime.datetime.combine(end_d, datetime.time.max)
+                df_final_export = df_for_export[(df_for_export["parsed_dt"] >= start_dt) & (df_for_export["parsed_dt"] <= end_dt)]
+                export_filename_tag = f"{start_d}_to_{end_d}"
+        else:
+            df_final_export = pd.DataFrame()
+            export_filename_tag = "empty"
+
+        st.caption(f"📊 目前準備匯出筆數：**{len(df_final_export)}** 筆記錄")
+
+        btn_c1, btn_c2 = st.columns(2)
+        with btn_c1:
+            if not df_final_export.empty:
+                clean_csv_df = df_final_export.drop(columns=["parsed_dt"], errors="ignore")
+                csv_bytes = clean_csv_df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    label=f"📥 匯出【指定期間審計日誌】CSV ({export_filename_tag})",
+                    data=csv_bytes,
+                    file_name=f"trayzero_audit_{export_filename_tag}.csv",
+                    mime="text/csv",
+                    type="primary"
+                )
+            else:
+                st.button("📥 暫無資料可匯出", disabled=True)
+
+        with btn_c2:
+            if not df_final_export.empty:
+                unique_members_in_period = [m for m in df_final_export["member_id"].dropna().unique().tolist() if m != "STAFF"]
+                if unique_members_in_period:
+                    crm_period_records = []
+                    for mid in unique_members_in_period:
+                        prof = analyze_member_loyalty_profile(mid, df_final_export)
+                        crm_period_records.append({
+                            "會員卡號 (Member ID)": prof["member_id"],
+                            "客群分類 (Segment)": prof["crm_segment"],
+                            "區間最愛餐點": prof["favorite_dish"],
+                            "區間平均殘食率": f"{prof['avg_waste']:.1f}%",
+                            "建議點餐預設": prof["pos_default_rice"],
+                            "建議推播優惠券": prof["retarget_strategy"]
+                        })
+                    df_crm_period = pd.DataFrame(crm_period_records)
+                    csv_crm_bytes = df_crm_period.to_csv(index=False).encode("utf-8-sig")
+                    st.download_button(
+                        label=f"📥 匯出【會員 Retargeting 數據包】CSV ({len(unique_members_in_period)}人)",
+                        data=csv_crm_bytes,
+                        file_name=f"cdc_loyalty_{export_filename_tag}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.button("ℹ️ 該期間無會員記錄 (均為員工)", disabled=True)
+            else:
+                st.button("📥 暫無會員資料", disabled=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    if modules.get("mod1", True) or modules.get("mod3", True):
         st.markdown("#### 🧭 大家樂總部營運與菜單工程建議")
         t_branch = sel_b if sel_b != "ALL" else df_filtered.groupby("branch_name")["waste_ratio"].mean().idxmax()
         t_dish = sel_d if sel_d != "ALL" else df_filtered.groupby("dish_name")["waste_ratio"].mean().idxmax()

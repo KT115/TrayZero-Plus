@@ -39,6 +39,9 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
+# 預設直接綁定你的 Google Drive Live CSV 連結 (真正雲端持久化)
+DEFAULT_BASE_GDRIVE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSloK2WPNFd8HPY4RfL2rNhwhk_kD12H0q09nDcrlMrx5O_zqslCOi1TPAXvlHtnP1FWxyJxGgG99QX/pub?output=csv"
+
 CONTAINER_AND_BEVERAGE_BLOCKLIST = {
     "cup", "bottle", "wine glass", "dining table", 
     "knife", "fork", "spoon", "chopsticks", "person", "chair"
@@ -67,9 +70,7 @@ def inject_safe_css():
             color: #0F172A !important;
         }
 
-        /* -----------------------------------------------------------
-           核心修復 1: 頂部 Box 改為精準大家樂暖紅橘漸變 Style (圖二風格)
-        ----------------------------------------------------------- */
+        /* 頂部 Box 改為精準大家樂暖紅橘漸變 Style */
         .pos-header-banner {
             background: linear-gradient(135deg, #C2301A 0%, #D95D1A 48%, #D87B18 100%) !important;
             border-radius: 14px !important;
@@ -89,9 +90,7 @@ def inject_safe_css():
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
 
-        /* -----------------------------------------------------------
-           核心修復 2: 側邊欄 Logo 絕對水平置中對齊
-        ----------------------------------------------------------- */
+        /* 側邊欄 Logo 絕對水平置中對齊 */
         [data-testid="stSidebar"] {
             background-color: #FFFFFF !important;
             border-right: 1.5px solid #E2E8F0 !important;
@@ -126,7 +125,6 @@ def inject_safe_css():
             visibility: visible !important;
         }
 
-        /* 單選 Radio 與 Checkbox 文字顯色 */
         div[data-testid="stRadio"] [role="radiogroup"] label,
         div[data-testid="stRadio"] [role="radiogroup"] label p,
         div[data-testid="stRadio"] [role="radiogroup"] label span,
@@ -321,33 +319,90 @@ def init_db():
                 is_active INTEGER
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cloud_config_db (
+                key TEXT PRIMARY KEY,
+                url TEXT
+            )
+        """)
 
-        dishes_count = conn.execute("SELECT COUNT(*) FROM master_dishes_db").fetchone()[0]
-        if dishes_count == 0:
-            init_dishes = [
-                ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
-                ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
-                ("D03", "滑蛋蝦仁飯 (Scrambled Egg Shrimp Rice)", "白米飯", "滑蛋蝦仁"),
-                ("D04", "香辣肉燥肉餅飯 (Minced Pork Patty Rice)", "白米飯", "煎肉餅"),
-                ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
-                ("D06", "車仔麵 (Kart Noodle)", "中式麵條", "牛腩/魚蛋/蘿蔔")
-            ]
-            conn.executemany("INSERT OR REPLACE INTO master_dishes_db VALUES (?, ?, ?, ?)", init_dishes)
+        # 核心保障：預先寫入你的 Google Drive Live CSV 連接網址
+        conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
+        conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('dishes_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=dishes",))
+        conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('branches_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=branches",))
+        conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('rewards_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=rewards",))
 
-        branches_count = conn.execute("SELECT COUNT(*) FROM master_branches_db").fetchone()[0]
-        if branches_count == 0:
-            init_branches = [
-                ("中環威靈頓街店", "Level A (商業核心區 / CBD)", "中西區", "白領上班族為主，午市尖峰翻檯率極高", 1200, 240),
-                ("沙田新城市廣場店", "Level B (住宅商場 / Residential)", "沙田區", "家庭客、長者與週末休閒客群", 1500, 260),
-                ("香港科技大學店 (HKUST)", "Level C (校園與青年區 / Campus)", "西貢區", "學生、教職員，運動量及食量顯著較大", 1800, 280),
-                ("將軍澳 Popcorn 店", "Level B (住宅商場 / Residential)", "西貢區", "家庭客及換乘鐵路客流", 1400, 260)
-            ]
-            conn.executemany("INSERT OR REPLACE INTO master_branches_db VALUES (?, ?, ?, ?, ?, ?)", init_branches)
+        # 永久保底種子資料（包含 D06 車仔麵，永不遺失）
+        init_dishes = [
+            ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
+            ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
+            ("D03", "滑蛋蝦仁飯 (Scrambled Egg Shrimp Rice)", "白米飯", "滑蛋蝦仁"),
+            ("D04", "香辣肉燥肉餅飯 (Minced Pork Patty Rice)", "白米飯", "煎肉餅"),
+            ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
+            ("D06", "車仔麵 (Kart Noodle)", "中式麵條", "牛腩/魚蛋/蘿蔔")
+        ]
+        conn.executemany("INSERT OR REPLACE INTO master_dishes_db VALUES (?, ?, ?, ?)", init_dishes)
+
+        init_branches = [
+            ("中環威靈頓街店", "Level A (商業核心區 / CBD)", "中西區", "白領上班族為主，午市尖峰翻檯率極高", 1200, 240),
+            ("沙田新城市廣場店", "Level B (住宅商場 / Residential)", "沙田區", "家庭客、長者與週末休閒客群", 1500, 260),
+            ("香港科技大學店 (HKUST)", "Level C (校園與青年區 / Campus)", "西貢區", "學生、教職員，運動量及食量顯著較大", 1800, 280),
+            ("將軍澳 Popcorn 店", "Level B (住宅商場 / Residential)", "西貢區", "家庭客及換乘鐵路客流", 1400, 260)
+        ]
+        conn.executemany("INSERT OR REPLACE INTO master_branches_db VALUES (?, ?, ?, ?, ?, ?)", init_branches)
+
+        init_rewards = [
+            ("R01", "極致光盤獎 (Ultra Clean)", 10.0, "Coupon + Points", "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】", 1),
+            ("R02", "達標惜食獎 (Standard Clean)", 20.0, "Coupon", "【$2 堂食電子券】+【20 綠色積分】", 1),
+            ("R03", "支持環保獎 (Green Return)", 100.0, "Points", "【10 綠色環保積分】", 1)
+        ]
+        conn.executemany("INSERT OR REPLACE INTO master_rewards_db VALUES (?, ?, ?, ?, ?, ?)", init_rewards)
 
 # ==============================================================================
-# 3. 雙向永續資料讀取與儲存 (CSV + SQLite Auto-Merge)
+# 3. Google Drive Live CSV 連接模組
+# ==============================================================================
+def get_cloud_urls():
+    urls = {
+        "base_url": DEFAULT_BASE_GDRIVE_URL,
+        "dishes_url": f"{DEFAULT_BASE_GDRIVE_URL}&sheet=dishes",
+        "branches_url": f"{DEFAULT_BASE_GDRIVE_URL}&sheet=branches",
+        "rewards_url": f"{DEFAULT_BASE_GDRIVE_URL}&sheet=rewards"
+    }
+    with db_conn() as conn:
+        rows = conn.execute("SELECT key, url FROM cloud_config_db").fetchall()
+        for k, u in rows:
+            if u and u.strip():
+                urls[k] = u.strip()
+    return urls
+
+def save_cloud_urls(urls):
+    with db_conn() as conn:
+        for k, u in urls.items():
+            conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES (?, ?)", (k, u.strip()))
+
+# ==============================================================================
+# 4. 雙向永續資料讀取與儲存 (Google Drive Live CSV 優先，本地保底)
 # ==============================================================================
 def get_live_dishes():
+    cloud_urls = get_cloud_urls()
+    url_to_try = cloud_urls.get("dishes_url", "")
+    
+    # 1. 優先從 Google Drive Live CSV 讀取 (支援主連結或分頁參數)
+    for u in [url_to_try, cloud_urls.get("base_url")]:
+        if u and u.startswith("http"):
+            try:
+                cloud_df = pd.read_csv(u, encoding="utf-8-sig")
+                if not cloud_df.empty and "name" in cloud_df.columns:
+                    cloud_df = cloud_df.dropna(subset=["name"])
+                    cloud_df = cloud_df[cloud_df["name"].astype(str).str.strip() != ""]
+                    cloud_df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+                    with db_conn() as conn:
+                        cloud_df.to_sql("master_dishes_db", conn, if_exists="replace", index=False)
+                    return cloud_df
+            except Exception:
+                pass
+
+    # 2. 離線容錯讀取：本地 SQLite 鏡像庫 + 本地 CSV
     with db_conn() as conn:
         db_df = pd.read_sql("SELECT dish_id, name, main_carb, protein FROM master_dishes_db", conn)
 
@@ -378,6 +433,23 @@ def save_live_dishes(df):
         clean_df.to_sql("master_dishes_db", conn, if_exists="replace", index=False)
 
 def get_live_branches():
+    cloud_urls = get_cloud_urls()
+    url_to_try = cloud_urls.get("branches_url", "")
+    
+    for u in [url_to_try]:
+        if u and u.startswith("http"):
+            try:
+                cloud_df = pd.read_csv(u, encoding="utf-8-sig")
+                if not cloud_df.empty and "name" in cloud_df.columns:
+                    cloud_df = cloud_df.dropna(subset=["name"])
+                    cloud_df = cloud_df[cloud_df["name"].astype(str).str.strip() != ""]
+                    cloud_df.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+                    with db_conn() as conn:
+                        cloud_df.to_sql("master_branches_db", conn, if_exists="replace", index=False)
+                    return cloud_df
+            except Exception:
+                pass
+
     with db_conn() as conn:
         db_df = pd.read_sql("SELECT name, level, district, traffic, avg_covers, base_rice_g FROM master_branches_db", conn)
 
@@ -408,6 +480,23 @@ def save_live_branches(df):
         clean_df.to_sql("master_branches_db", conn, if_exists="replace", index=False)
 
 def get_live_rewards():
+    cloud_urls = get_cloud_urls()
+    url_to_try = cloud_urls.get("rewards_url", "")
+    
+    for u in [url_to_try]:
+        if u and u.startswith("http"):
+            try:
+                cloud_df = pd.read_csv(u, encoding="utf-8-sig")
+                if not cloud_df.empty and "tier_name" in cloud_df.columns:
+                    cloud_df = cloud_df.dropna(subset=["tier_name"])
+                    cloud_df = cloud_df[cloud_df["tier_name"].astype(str).str.strip() != ""]
+                    cloud_df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+                    with db_conn() as conn:
+                        cloud_df.to_sql("master_rewards_db", conn, if_exists="replace", index=False)
+                    return cloud_df
+            except Exception:
+                pass
+
     with db_conn() as conn:
         db_df = pd.read_sql("SELECT reward_id, tier_name, max_waste_ratio, reward_type, reward_description, is_active FROM master_rewards_db", conn)
 
@@ -489,7 +578,7 @@ def get_records():
         return df
 
 # ==============================================================================
-# 4. Multi-Modal Vision Engine (CLIP 語義評估 + YOLOS 空間排除)
+# 5. Multi-Modal Vision Engine (CLIP 語義評估 + YOLOS 空間排除)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -636,7 +725,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 5. Member Profile Synthesis (Loyalty Engine)
+# 6. Member Profile Synthesis (Loyalty Engine)
 # ==============================================================================
 def analyze_member_loyalty_profile(member_id, df_all):
     if not member_id or member_id == "STAFF" or df_all.empty:
@@ -700,10 +789,9 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 6. Mode Renderers (Fast-Casual POS Layout)
+# 7. Mode Renderers
 # ==============================================================================
 def render_header():
-    # 核心修復 1: 頂部 Box 改為精準大家樂暖紅橘漸變 Style (圖二風格)
     st.markdown("""
     <div class="pos-header-banner">
         <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統</div>
@@ -1020,14 +1108,36 @@ def render_mode2(engine, modules):
             """, unsafe_allow_html=True)
 
 def render_mode3():
-    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management - Real-Time CSV)")
-    st.caption("所有編輯與上傳均即時同步至實體 CSV 檔案與資料庫鏡像庫，無論系統如何重啟或更新，資料均能完整保留。")
+    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management - Live Cloud Store)")
+    st.caption("支援連接 Google Drive / Google Sheets 發佈的 Live CSV 網址，系統每次刷新皆從雲端即時拉取，保證更新代碼後資料永不遺失。")
 
-    tab1, tab2, tab3 = st.tabs([
+    tab_cloud, tab1, tab2, tab3 = st.tabs([
+        "☁️ Google Drive / Sheets Live CSV 連接",
         "🏢 分店清單 (Branches CSV)", 
         "🍱 餐點品項管理 (Menu CSV)",
         "🎁 殘食門檻獎勵階梯配置 (Incentive Tiers CSV)"
     ])
+
+    with tab_cloud:
+        st.markdown("#### ☁️ Google Drive / Google Sheets Live CSV 雲端數據源配置")
+        st.info("💡 **系統已自動綁定你的 Google Drive 發佈連結！**\n"
+                "若你的 Google 試算表分頁包含 `branches`、`dishes`、`rewards`，系統會自動在網址後加上 `&sheet=分頁名稱` 即時拉取。")
+        
+        current_urls = get_cloud_urls()
+        c_base = st.text_input("Google Drive 主發佈 CSV 網址 (Base Live CSV URL)", value=current_urls.get("base_url", DEFAULT_BASE_GDRIVE_URL))
+        c_url1 = st.text_input("1. 分店清單 Live CSV 網址", value=current_urls.get("branches_url", f"{c_base}&sheet=branches"))
+        c_url2 = st.text_input("2. 菜單清單 Live CSV 網址", value=current_urls.get("dishes_url", f"{c_base}&sheet=dishes"))
+        c_url3 = st.text_input("3. 獎勵規則 Live CSV 網址", value=current_urls.get("rewards_url", f"{c_base}&sheet=rewards"))
+
+        if st.button("💾 儲存並啟用 Google Drive Live 連接 (Save Cloud Sync)", type="primary"):
+            save_cloud_urls({
+                "base_url": c_base,
+                "branches_url": c_url1,
+                "dishes_url": c_url2,
+                "rewards_url": c_url3
+            })
+            st.success("✅ Google Drive 雲端 Live CSV 連結已成功儲存並生效！系統即刻開始即時同步。")
+            st.rerun()
 
     with tab1:
         df_b_current = get_live_branches()
@@ -1167,7 +1277,7 @@ def render_mode3():
             st.download_button("📥 下載目前 master_rewards.csv", data=csv_r_export, file_name="master_rewards.csv", mime="text/csv")
 
 # ==============================================================================
-# 7. Application Entry Point
+# 8. Application Entry Point
 # ==============================================================================
 def main():
     inject_safe_css()
@@ -1176,7 +1286,6 @@ def main():
     with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Loading AI Engines)..."):
         engine = load_ai_engine()
 
-    # 側邊欄頂部 Logo：已設定置中樣式
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
     if logo_target:
         st.sidebar.image(logo_target, width=175)
@@ -1209,7 +1318,6 @@ def main():
         "mod4": mod_4
     }
 
-    # 渲染大家樂暖紅橘漸變標題橫幅 (圖二風格)
     render_header()
 
     if mode.startswith("Mode 1"): 

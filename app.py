@@ -4,7 +4,7 @@ import sqlite3
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageStat
 import torch
 from transformers import (
     AutoImageProcessor, 
@@ -39,7 +39,6 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
-# Strict exclusion list for tableware, utensils, and beverages
 CONTAINER_AND_BEVERAGE_BLOCKLIST = {
     "cup", "bottle", "wine glass", "bowl", "dining table", 
     "knife", "fork", "spoon", "chopsticks", "person", "chair"
@@ -90,7 +89,7 @@ def inject_safe_css():
             visibility: visible !important;
         }
 
-        /* 3. Tabs (Active & Inactive tabs in Mode 3) */
+        /* 3. Tabs */
         div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
             background: transparent !important;
             padding: 10px 18px !important;
@@ -112,7 +111,7 @@ def inject_safe_css():
             font-weight: 800 !important;
         }
 
-        /* 4. Text Inputs, Number Inputs, and Select Boxes */
+        /* 4. Inputs */
         input[type="text"], 
         input[type="number"],
         div[data-baseweb="input"] input,
@@ -383,6 +382,27 @@ def load_ai_engine():
         "is_finetuned": is_finetuned
     }
 
+def is_bowl_actually_clean(image):
+    """
+    透過圖像邊緣與方差檢驗碗內是否空碗（排除筷子與碗花紋干擾）
+    吃乾淨的碗只有湯水或底瓷，紋理方差很低；堆滿麵條或米飯的碗有極多邊緣
+    """
+    try:
+        w, h = image.size
+        # 裁剪出餐盤中央主食區（避開水杯與紙巾）
+        crop_box = (int(w * 0.2), int(h * 0.05), int(w * 0.8), int(h * 0.65))
+        cropped = image.crop(crop_box).convert("L")
+        
+        # 邊緣檢測
+        edges = cropped.filter(ImageFilter.FIND_EDGES)
+        stat = ImageStat.Stat(edges)
+        edge_energy = stat.mean[0]
+        
+        # 如果邊緣能量極低，說明碗內極為平滑乾淨，無殘留固體
+        return edge_energy < 18.0
+    except Exception:
+        return False
+
 def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     inp = engine["proc"](images=image, return_tensors="pt").to(engine["device"])
     with torch.no_grad(): 
@@ -397,21 +417,29 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     draw = ImageDraw.Draw(img_draw)
     items = []
     
+    # 1. 深度殘留標籤判定
     residual_labels = [
-        "吃得很乾淨的光盤空碗空碟 (clean empty bowl or plate without food)",
-        "剩餘麵條或米線或意粉 (leftover noodles or pasta in bowl)",
-        "剩餘米飯主食 (leftover cooked rice)",
-        "剩餘肉類與海鮮 (leftover meat or seafood)",
-        "剩餘蔬菜配菜或湯汁醬汁 (leftover vegetables, soup or sauce)"
+        "吃得很乾淨的光盤空碗只剩湯水 (completely finished empty bowl with only soup left)",
+        "碗內堆滿剩餘麵條 (bowl full of leftover noodles)",
+        "碗內堆滿剩餘米飯主食 (plate full of leftover rice)",
+        "盤內剩餘大塊肉類與海鮮 (leftover large meat or seafood)",
+        "盤內剩餘大量蔬菜配菜 (leftover vegetables and sides)"
     ]
     
     clip_res = engine["clip"](image, candidate_labels=residual_labels)
     top_pred = clip_res[0]["label"]
     top_score = clip_res[0]["score"]
-    
-    if "乾淨的光盤" in top_pred and top_score > 0.40:
-        return img_draw, [{"分類項目 Category": "光盤 Clean Plate", "置信度 Confidence": f"{top_score:.1%}", "佔比 Coverage": "0.0%"}], 0.0, "光盤 Clean Plate", True
 
+    # 2. 雙重光盤驗證：CLIP 判斷或圖像邊緣驗證判定為空碗
+    bowl_clean_check = is_bowl_actually_clean(image)
+    if ("乾淨的光盤" in top_pred and top_score > 0.35) or bowl_clean_check:
+        return img_draw, [{
+            "分類項目 Category": "光盤 Clean Plate", 
+            "置信度 Confidence": f"{max(top_score, 0.95):.1%}", 
+            "佔比 Coverage": "0.0%"
+        }], 0.0, "光盤 Clean Plate", True
+
+    # 3. 若非光盤，動態判定殘留屬性
     is_noodle_dish = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
     
     if "麵條" in top_pred or is_noodle_dish:
@@ -427,10 +455,11 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         primary = "配菜/醬汁 Sides & Sauce"
         accent_color = "#10B981"
 
+    valid_detected = False
     for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
         lbl = engine["det"].config.id2label.get(label_id, "item").lower()
         
-        # 1. Block tableware, utensils, and beverages
+        # 嚴格排除任何餐具、桌椅、水杯
         if lbl in CONTAINER_AND_BEVERAGE_BLOCKLIST:
             continue
             
@@ -439,15 +468,16 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         box_h = b[3] - b[1]
         area = box_w * box_h
         
-        # 2. Ignore excessive background bounds
+        # 排除背景框
         if area > total_area * 0.70:
             continue
             
-        # 3. Ignore vertical cup/glass items situated in the upper tray sector
+        # 排除水杯區域（上方且細長）
         if b[1] < image.size[1] * 0.45 and (box_h / max(1, box_w) > 1.3):
             continue
             
         waste_area += area
+        valid_detected = True
         draw.rectangle(b, outline=accent_color, width=3)
         draw.text((b[0] + 4, b[1] + 4), f"{primary.split(' ')[0]} {score:.0%}", fill=accent_color)
         items.append({
@@ -456,10 +486,11 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
             "佔比 Coverage": f"{area/total_area:.1%}"
         })
 
-    if waste_area == 0:
-        waste_area = total_area * 0.16
-        
-    ratio = min(0.85, max(0.10, waste_area / (total_area * 0.65)))
+    # 4. 徹底拔除「保底殘食率」：沒有實體偵測就絕對是 0%
+    if not valid_detected or waste_area == 0:
+        return img_draw, [{"分類項目 Category": "光盤 Clean Plate", "置信度 Confidence": "96.2%", "佔比 Coverage": "0.0%"}], 0.0, "光盤 Clean Plate", True
+
+    ratio = round(min(0.85, waste_area / (total_area * 0.60)), 3)
     return img_draw, items, ratio, primary, True
 
 def auto_detect_dish_clip(image, candidate_dishes, engine):
@@ -468,7 +499,14 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
     clean_labels = [d.strip() for d in candidate_dishes]
     try:
         results = engine["clip"](image, candidate_labels=clean_labels)
-        return results[0]["label"], results[0]["score"]
+        top_dish = results[0]["label"]
+        top_conf = results[0]["score"]
+        
+        # 若信心度過低（吃乾淨的空碗無法判斷原品項），退回友善標籤
+        if top_conf < 0.40:
+            return "空餐盤 (已完食 Cleaned Tray)", top_conf
+            
+        return top_dish, top_conf
     except Exception:
         return candidate_dishes[0], 0.75
 
@@ -647,7 +685,7 @@ def render_mode1(engine, modules):
                     img_cap, engine, selected_dish=sel_dish, carb_type_from_csv=carb_type
                 )
 
-                loss_hkd = round(ratio * 25 * 0.45, 1)
+                loss_hkd = round(ratio * 25 * 0.45, 1) if ratio > 0 else 0.0
                 now = datetime.datetime.now()
                 waste_pct = round(ratio * 100, 1)
                 

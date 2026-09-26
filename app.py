@@ -111,7 +111,7 @@ def inject_safe_css():
             font-weight: 800 !important;
         }
 
-        /* 4. Inputs */
+        /* 4. Text Inputs, Number Inputs, and Select Boxes */
         input[type="text"], 
         input[type="number"],
         div[data-baseweb="input"] input,
@@ -195,56 +195,191 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. File-Driven Persistence Layer (Zero Hardcoding)
+# 2. Database Connection & Schema Setup
 # ==============================================================================
-def get_live_branches():
-    if os.path.exists(BRANCH_FILE):
-        try:
-            return pd.read_csv(BRANCH_FILE, encoding="utf-8-sig")
-        except Exception:
-            return pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
-    else:
-        df_empty = pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
-        df_empty.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
-        return df_empty
+def db_conn(): 
+    return sqlite3.connect(DB_FILE)
 
-def save_live_branches(df):
-    df.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+def init_db():
+    with db_conn() as conn:
+        # 1. 審計日誌流水表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                audit_date TEXT,
+                audit_month TEXT,
+                branch_name TEXT,
+                member_id TEXT,
+                dish_name TEXT,
+                primary_waste TEXT,
+                waste_ratio REAL,
+                cost_waste_hkd REAL,
+                co2_emission_kg REAL,
+                reward_issued TEXT
+            )
+        """)
+        # 2. 永續菜單鏡像表 (防止 Git 覆蓋消失)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_dishes_db (
+                dish_id TEXT PRIMARY KEY,
+                name TEXT,
+                main_carb TEXT,
+                protein TEXT
+            )
+        """)
+        # 3. 永續門市鏡像表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_branches_db (
+                name TEXT PRIMARY KEY,
+                level TEXT,
+                district TEXT,
+                traffic TEXT,
+                avg_covers INTEGER,
+                base_rice_g INTEGER
+            )
+        """)
+        # 4. 永續獎勵階梯鏡像表
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_rewards_db (
+                reward_id TEXT PRIMARY KEY,
+                tier_name TEXT,
+                max_waste_ratio REAL,
+                reward_type TEXT,
+                reward_description TEXT,
+                is_active INTEGER
+            )
+        """)
 
+        # 審計種子資料載入
+        row_count = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
+        if row_count == 0 and os.path.exists(SEED_AUDIT_FILE):
+            try:
+                seed_df = pd.read_csv(SEED_AUDIT_FILE, encoding="utf-8-sig")
+                for col in ["member_id", "reward_issued", "audit_date", "audit_month"]:
+                    if col not in seed_df.columns:
+                        if col == "member_id": seed_df[col] = "GUEST"
+                        elif col == "reward_issued": seed_df[col] = "歷史資料"
+                        elif col == "audit_date": seed_df[col] = datetime.date.today().strftime("%Y-%m-%d")
+                        elif col == "audit_month": seed_df[col] = datetime.date.today().strftime("%Y-%m")
+                
+                valid_cols = ["timestamp", "audit_date", "audit_month", "branch_name", "member_id", 
+                              "dish_name", "primary_waste", "waste_ratio", "cost_waste_hkd", "co2_emission_kg", "reward_issued"]
+                seed_df_clean = seed_df[[c for c in valid_cols if c in seed_df.columns]]
+                seed_df_clean.to_sql("audit_logs", conn, if_exists="append", index=False)
+            except Exception as e:
+                print(f"Seed Load Error: {e}")
+
+# ==============================================================================
+# 3. 雙向永續資料讀取與儲存 (CSV + SQLite Auto-Merge，抗 Git 覆蓋)
+# ==============================================================================
 def get_live_dishes():
+    """從 CSV 讀取，並與 SQLite 永續資料表自動補合（防止 Git pull 覆蓋）"""
+    csv_df = pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
     if os.path.exists(DISH_FILE):
         try:
-            return pd.read_csv(DISH_FILE, encoding="utf-8-sig")
-        except Exception:
-            return pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
-    else:
-        df_empty = pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
-        df_empty.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-        return df_empty
-
-def save_live_dishes(df):
-    df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-
-def get_live_rewards():
-    if os.path.exists(REWARD_FILE):
-        try:
-            df = pd.read_csv(REWARD_FILE, encoding="utf-8-sig")
-            if not df.empty:
-                return df
+            csv_df = pd.read_csv(DISH_FILE, encoding="utf-8-sig")
         except Exception:
             pass
 
+    with db_conn() as conn:
+        db_df = pd.read_sql("SELECT dish_id, name, main_carb, protein FROM master_dishes_db", conn)
+
+    # 合併 CSV 與 SQLite 資料
+    combined = pd.concat([csv_df, db_df], ignore_index=True)
+    if not combined.empty:
+        combined = combined.dropna(subset=["name"])
+        combined = combined[combined["name"].str.strip() != ""]
+        combined = combined.drop_duplicates(subset=["name"], keep="last")
+        # 同步回寫 CSV 與 DB
+        combined.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+        with db_conn() as conn:
+            combined.to_sql("master_dishes_db", conn, if_exists="replace", index=False)
+        return combined
+    else:
+        return pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
+
+def save_live_dishes(df):
+    """清洗空白列，同時存入 CSV 與 SQLite"""
+    clean_df = df.dropna(subset=["name"]).copy()
+    clean_df = clean_df[clean_df["name"].astype(str).str.strip() != ""]
+    clean_df = clean_df.drop_duplicates(subset=["name"], keep="last")
+    
+    clean_df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_dishes_db", conn, if_exists="replace", index=False)
+
+def get_live_branches():
+    csv_df = pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
+    if os.path.exists(BRANCH_FILE):
+        try:
+            csv_df = pd.read_csv(BRANCH_FILE, encoding="utf-8-sig")
+        except Exception:
+            pass
+
+    with db_conn() as conn:
+        db_df = pd.read_sql("SELECT name, level, district, traffic, avg_covers, base_rice_g FROM master_branches_db", conn)
+
+    combined = pd.concat([csv_df, db_df], ignore_index=True)
+    if not combined.empty:
+        combined = combined.dropna(subset=["name"])
+        combined = combined[combined["name"].str.strip() != ""]
+        combined = combined.drop_duplicates(subset=["name"], keep="last")
+        combined.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+        with db_conn() as conn:
+            combined.to_sql("master_branches_db", conn, if_exists="replace", index=False)
+        return combined
+    else:
+        return pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
+
+def save_live_branches(df):
+    clean_df = df.dropna(subset=["name"]).copy()
+    clean_df = clean_df[clean_df["name"].astype(str).str.strip() != ""]
+    clean_df = clean_df.drop_duplicates(subset=["name"], keep="last")
+    
+    clean_df.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_branches_db", conn, if_exists="replace", index=False)
+
+def get_live_rewards():
+    csv_df = pd.DataFrame(columns=["reward_id", "tier_name", "max_waste_ratio", "reward_type", "reward_description", "is_active"])
+    if os.path.exists(REWARD_FILE):
+        try:
+            csv_df = pd.read_csv(REWARD_FILE, encoding="utf-8-sig")
+        except Exception:
+            pass
+
+    with db_conn() as conn:
+        db_df = pd.read_sql("SELECT reward_id, tier_name, max_waste_ratio, reward_type, reward_description, is_active FROM master_rewards_db", conn)
+
+    combined = pd.concat([csv_df, db_df], ignore_index=True)
+    if not combined.empty:
+        combined = combined.dropna(subset=["tier_name"])
+        combined = combined[combined["tier_name"].str.strip() != ""]
+        combined = combined.drop_duplicates(subset=["tier_name"], keep="last")
+        combined.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+        with db_conn() as conn:
+            combined.to_sql("master_rewards_db", conn, if_exists="replace", index=False)
+        return combined
+
+    # 預設獎勵階梯
     default_rewards = [
         {"reward_id": "R01", "tier_name": "極致光盤獎 (Ultra Clean)", "max_waste_ratio": 10.0, "reward_type": "Coupon + Points", "reward_description": "【$3 現金券】+【50 綠色積分】+【凍檸茶半價券】", "is_active": True},
         {"reward_id": "R02", "tier_name": "達標惜食獎 (Standard Clean)", "max_waste_ratio": 20.0, "reward_type": "Coupon", "reward_description": "【$2 堂食電子券】+【20 綠色積分】", "is_active": True},
         {"reward_id": "R03", "tier_name": "支持環保獎 (Green Return)", "max_waste_ratio": 100.0, "reward_type": "Points", "reward_description": "【10 綠色環保積分】", "is_active": True}
     ]
     df_r = pd.DataFrame(default_rewards)
-    df_r.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+    save_live_rewards(df_r)
     return df_r
 
 def save_live_rewards(df):
-    df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+    clean_df = df.dropna(subset=["tier_name"]).copy()
+    clean_df = clean_df[clean_df["tier_name"].astype(str).str.strip() != ""]
+    clean_df = clean_df.drop_duplicates(subset=["tier_name"], keep="last")
+    
+    clean_df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_rewards_db", conn, if_exists="replace", index=False)
 
 def evaluate_customer_rewards(waste_ratio_pct):
     df_r = get_live_rewards()
@@ -263,54 +398,6 @@ def evaluate_customer_rewards(waste_ratio_pct):
         return [f"🎉 【{best_tier['tier_name']}】已派發至大家樂 App：{best_tier['reward_description']}"]
     else:
         return ["已完成還盤 (未符合獎勵門檻)"]
-
-# ==============================================================================
-# 3. Dual-Layer Audit Store (SQLite + CSV Sync)
-# ==============================================================================
-def db_conn(): 
-    return sqlite3.connect(DB_FILE)
-
-def init_db():
-    with db_conn() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS audit_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp TEXT,
-                audit_date TEXT,
-                audit_month TEXT,
-                branch_name TEXT,
-                member_id TEXT,
-                dish_name TEXT,
-                primary_waste TEXT,
-                waste_ratio REAL,
-                cost_waste_hkd REAL,
-                co2_emission_kg REAL,
-                reward_issued TEXT
-            )
-        """)
-        cols = [c[1] for c in conn.execute("PRAGMA table_info(audit_logs)").fetchall()]
-        if "member_id" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN member_id TEXT")
-        if "reward_issued" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN reward_issued TEXT")
-        if "audit_date" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN audit_date TEXT")
-        if "audit_month" not in cols: conn.execute("ALTER TABLE audit_logs ADD COLUMN audit_month TEXT")
-
-        row_count = conn.execute("SELECT COUNT(*) FROM audit_logs").fetchone()[0]
-        if row_count == 0 and os.path.exists(SEED_AUDIT_FILE):
-            try:
-                seed_df = pd.read_csv(SEED_AUDIT_FILE, encoding="utf-8-sig")
-                for col in ["member_id", "reward_issued", "audit_date", "audit_month"]:
-                    if col not in seed_df.columns:
-                        if col == "member_id": seed_df[col] = "GUEST"
-                        elif col == "reward_issued": seed_df[col] = "歷史資料"
-                        elif col == "audit_date": seed_df[col] = datetime.date.today().strftime("%Y-%m-%d")
-                        elif col == "audit_month": seed_df[col] = datetime.date.today().strftime("%Y-%m")
-                
-                valid_cols = ["timestamp", "audit_date", "audit_month", "branch_name", "member_id", 
-                              "dish_name", "primary_waste", "waste_ratio", "cost_waste_hkd", "co2_emission_kg", "reward_issued"]
-                seed_df_clean = seed_df[[c for c in valid_cols if c in seed_df.columns]]
-                seed_df_clean.to_sql("audit_logs", conn, if_exists="append", index=False)
-            except Exception as e:
-                print(f"Seed Load Error: {e}")
 
 def save_record(r):
     with db_conn() as conn:
@@ -383,22 +470,14 @@ def load_ai_engine():
     }
 
 def is_bowl_actually_clean(image):
-    """
-    透過圖像邊緣與方差檢驗碗內是否空碗（排除筷子與碗花紋干擾）
-    吃乾淨的碗只有湯水或底瓷，紋理方差很低；堆滿麵條或米飯的碗有極多邊緣
-    """
+    """檢驗碗內是否空碗（排除筷子與碗花紋干擾）"""
     try:
         w, h = image.size
-        # 裁剪出餐盤中央主食區（避開水杯與紙巾）
         crop_box = (int(w * 0.2), int(h * 0.05), int(w * 0.8), int(h * 0.65))
         cropped = image.crop(crop_box).convert("L")
-        
-        # 邊緣檢測
         edges = cropped.filter(ImageFilter.FIND_EDGES)
         stat = ImageStat.Stat(edges)
         edge_energy = stat.mean[0]
-        
-        # 如果邊緣能量極低，說明碗內極為平滑乾淨，無殘留固體
         return edge_energy < 18.0
     except Exception:
         return False
@@ -417,7 +496,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     draw = ImageDraw.Draw(img_draw)
     items = []
     
-    # 1. 深度殘留標籤判定
     residual_labels = [
         "吃得很乾淨的光盤空碗只剩湯水 (completely finished empty bowl with only soup left)",
         "碗內堆滿剩餘麵條 (bowl full of leftover noodles)",
@@ -430,7 +508,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     top_pred = clip_res[0]["label"]
     top_score = clip_res[0]["score"]
 
-    # 2. 雙重光盤驗證：CLIP 判斷或圖像邊緣驗證判定為空碗
     bowl_clean_check = is_bowl_actually_clean(image)
     if ("乾淨的光盤" in top_pred and top_score > 0.35) or bowl_clean_check:
         return img_draw, [{
@@ -439,7 +516,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
             "佔比 Coverage": "0.0%"
         }], 0.0, "光盤 Clean Plate", True
 
-    # 3. 若非光盤，動態判定殘留屬性
     is_noodle_dish = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
     
     if "麵條" in top_pred or is_noodle_dish:
@@ -459,7 +535,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
         lbl = engine["det"].config.id2label.get(label_id, "item").lower()
         
-        # 嚴格排除任何餐具、桌椅、水杯
         if lbl in CONTAINER_AND_BEVERAGE_BLOCKLIST:
             continue
             
@@ -468,11 +543,9 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         box_h = b[3] - b[1]
         area = box_w * box_h
         
-        # 排除背景框
         if area > total_area * 0.70:
             continue
             
-        # 排除水杯區域（上方且細長）
         if b[1] < image.size[1] * 0.45 and (box_h / max(1, box_w) > 1.3):
             continue
             
@@ -486,7 +559,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
             "佔比 Coverage": f"{area/total_area:.1%}"
         })
 
-    # 4. 徹底拔除「保底殘食率」：沒有實體偵測就絕對是 0%
     if not valid_detected or waste_area == 0:
         return img_draw, [{"分類項目 Category": "光盤 Clean Plate", "置信度 Confidence": "96.2%", "佔比 Coverage": "0.0%"}], 0.0, "光盤 Clean Plate", True
 
@@ -502,7 +574,6 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         top_dish = results[0]["label"]
         top_conf = results[0]["score"]
         
-        # 若信心度過低（吃乾淨的空碗無法判斷原品項），退回友善標籤
         if top_conf < 0.40:
             return "空餐盤 (已完食 Cleaned Tray)", top_conf
             
@@ -863,7 +934,7 @@ def render_mode2(engine, modules):
 
 def render_mode3():
     st.markdown("### ⚙️ 基礎資料管理 (Master Data Management - Real-Time CSV)")
-    st.caption("所有編輯與上傳均直接即時寫入根目錄實體 CSV 檔案，無任何寫死代碼，確保刷新不丟失。")
+    st.caption("所有編輯與上傳均即時同步至實體 CSV 檔案與資料庫鏡像庫，無論系統如何重啟或更新，資料均能完整保留。")
 
     tab1, tab2, tab3 = st.tabs([
         "🏢 分店清單 (Branches CSV)", 
@@ -881,10 +952,10 @@ def render_mode3():
         with c_b1:
             if st.button("💾 儲存修改至 master_branches.csv", type="primary"):
                 save_live_branches(edit_b)
-                st.success("✅ master_branches.csv 檔案已即時更新儲存！")
+                st.success("✅ master_branches.csv 檔案與資料庫鏡像已即時更新儲存！")
                 st.rerun()
         with c_b2:
-            csv_b_export = edit_b.to_csv(index=False).encode("utf-8-sig")
+            csv_b_export = edit_b.dropna(subset=["name"]).to_csv(index=False).encode("utf-8-sig")
             st.download_button("📥 下載目前 master_branches.csv", data=csv_b_export, file_name="master_branches.csv", mime="text/csv")
 
         st.markdown("---")
@@ -893,12 +964,12 @@ def render_mode3():
             try:
                 new_df_b = pd.read_csv(up_b, encoding="utf-8-sig")
                 save_live_branches(new_df_b)
-                st.success(f"🎉 成功寫入 {len(new_df_b)} 間分店至 master_branches.csv！")
+                st.success(f"🎉 成功寫入 {len(new_df_b)} 間分店！")
                 st.rerun()
             except Exception as e:
                 st.error(f"匯入錯誤: {e}")
 
-    # Tab 2: 菜品清單即時管理
+    # Tab 2: 菜品清單即時管理 (加入自動持久化與去空列保護)
     with tab2:
         df_d_current = get_live_dishes()
         
@@ -928,28 +999,29 @@ def render_mode3():
 
                 new_row = pd.DataFrame([{
                     "dish_id": new_dish_id,
-                    "name": new_dish_name,
+                    "name": new_dish_name.strip(),
                     "main_carb": new_carb.split(" ")[0],
-                    "protein": new_protein if new_protein else "綜合配料"
+                    "protein": new_protein.strip() if new_protein else "綜合配料"
                 }])
                 
-                updated_dishes = pd.concat([df_d_current, new_row], ignore_index=True).drop_duplicates(subset=["name"], keep="last")
+                updated_dishes = pd.concat([df_d_current, new_row], ignore_index=True)
                 save_live_dishes(updated_dishes)
-                st.success(f"🎉 成功將【{new_dish_name}】寫入 master_dishes.csv！Mode 1 即刻可選。")
+                st.success(f"🎉 成功將【{new_dish_name}】寫入 master_dishes.csv 與資料庫！前台已即刻生效。")
                 st.rerun()
 
         st.markdown("---")
         st.markdown("#### 🍱 現有餐點清單即時編輯 (Live Menu CSV)")
+        st.caption("提示：在表格中修改或新增後，點擊下方「儲存修改」按鈕即可完成寫入。系統會自動過濾未填寫的空白列。")
         edit_d = st.data_editor(df_d_current, num_rows="dynamic", key="live_dish_editor")
         
         c_d1, c_d2 = st.columns([1, 1])
         with c_d1:
             if st.button("💾 儲存修改至 master_dishes.csv", type="primary"):
                 save_live_dishes(edit_d)
-                st.success("✅ master_dishes.csv 檔案已即時更新儲存！")
+                st.success("✅ master_dishes.csv 檔案與資料庫鏡像已即時更新儲存！")
                 st.rerun()
         with c_d2:
-            csv_d_export = edit_d.to_csv(index=False).encode("utf-8-sig")
+            csv_d_export = edit_d.dropna(subset=["name"]).to_csv(index=False).encode("utf-8-sig")
             st.download_button("📥 下載目前 master_dishes.csv", data=csv_d_export, file_name="master_dishes.csv", mime="text/csv")
 
         st.markdown("---")
@@ -958,7 +1030,7 @@ def render_mode3():
             try:
                 new_df_d = pd.read_csv(up_d, encoding="utf-8-sig")
                 save_live_dishes(new_df_d)
-                st.success(f"🎉 成功寫入 {len(new_df_d)} 項餐點至 master_dishes.csv！")
+                st.success(f"🎉 成功寫入 {len(new_df_d)} 項餐點！")
                 st.rerun()
             except Exception as e:
                 st.error(f"匯入錯誤: {e}")
@@ -966,7 +1038,7 @@ def render_mode3():
     # Tab 3: 動態獎勵階梯配置
     with tab3:
         st.markdown("#### 🎁 會員還盤獎勵階梯配置 (Incentive Tiers Configuration)")
-        st.caption("管理員可在此自訂當客戶達到特定殘食佔比門檻時，自動派發的單一或多項組合獎勵（如不同 Coupon、折扣券、積分等）。所有設定即時寫入 master_rewards.csv。")
+        st.caption("管理員可在此自訂當客戶達到特定殘食佔比門檻時，自動派發的單一或多項組合獎勵。設定即時寫入 master_rewards.csv。")
 
         df_r_current = get_live_rewards()
         
@@ -1004,10 +1076,10 @@ def render_mode3():
         with c_save_r1:
             if st.button("💾 儲存修改至 master_rewards.csv", type="secondary"):
                 save_live_rewards(edit_r)
-                st.success("✅ master_rewards.csv 檔案已即時更新儲存！")
+                st.success("✅ master_rewards.csv 檔案與資料庫已即時更新儲存！")
                 st.rerun()
         with c_save_r2:
-            csv_r_export = edit_r.to_csv(index=False).encode("utf-8-sig")
+            csv_r_export = edit_r.dropna(subset=["tier_name"]).to_csv(index=False).encode("utf-8-sig")
             st.download_button("📥 下載目前 master_rewards.csv", data=csv_r_export, file_name="master_rewards.csv", mime="text/csv")
 
 # ==============================================================================

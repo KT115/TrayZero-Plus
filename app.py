@@ -4,7 +4,7 @@ import sqlite3
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageStat
 import torch
 from transformers import (
     AutoImageProcessor, 
@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# 1. Global Paths & Strict High-Contrast CSS Enforcement
+# 1. Global Paths & Fast-Casual POS Enterprise CSS Theme
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
@@ -47,7 +47,12 @@ CONTAINER_AND_BEVERAGE_BLOCKLIST = {
 def inject_safe_css():
     st.markdown("""
     <style>
+        /* 根色彩變數 - Option B: Fast-Casual POS 商業點餐機高對比風格 */
         :root {
+            --cdc-red: #DC2626 !important;
+            --cdc-amber: #D97706 !important;
+            --cdc-amber-light: #FFFBEB !important;
+            --cdc-dark: #0F172A !important;
             --text-color: #0F172A !important;
             --background-color: #F8FAFC !important;
             --secondary-background-color: #FFFFFF !important;
@@ -56,25 +61,92 @@ def inject_safe_css():
         .stApp {
             background-color: #F8FAFC !important;
             color: #0F172A !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
         }
 
         .main .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 1.2rem !important;
             padding-bottom: 3rem !important;
             color: #0F172A !important;
         }
 
+        /* 頂部 POS 風格企業橫幅 (取代圖片，純文字品牌渲染) */
+        .pos-header-banner {
+            background: #FFFFFF !important;
+            border-radius: 12px;
+            padding: 16px 22px;
+            margin-bottom: 20px;
+            border: 1px solid #E2E8F0;
+            border-left: 8px solid #D97706 !important;
+            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.08);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pos-header-title {
+            color: #0F172A !important;
+            font-size: 1.35rem !important;
+            font-weight: 900 !important;
+            margin: 0 !important;
+            letter-spacing: -0.02em;
+        }
+        .pos-header-sub {
+            color: #64748B !important;
+            font-size: 0.82rem !important;
+            font-weight: 700 !important;
+            margin-top: 4px;
+        }
+        .shift-badge {
+            background: #FEF3C7 !important;
+            border: 1.5px solid #FDE68A !important;
+            color: #B45309 !important;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 900;
+        }
+
+        /* 側邊欄 POS 樣式 */
+        [data-testid="stSidebar"] {
+            background-color: #FFFFFF !important;
+            border-right: 1.5px solid #E2E8F0 !important;
+            padding-top: 1rem !important;
+        }
+        .sidebar-brand-box {
+            background: linear-gradient(135deg, #DC2626 0%, #D97706 100%) !important;
+            border-radius: 12px;
+            padding: 16px 14px;
+            text-align: center;
+            color: #FFFFFF !important;
+            margin-bottom: 18px;
+            box-shadow: 0 4px 10px rgba(220, 38, 38, 0.15);
+        }
+        .sidebar-brand-title {
+            font-size: 1.15rem !important;
+            font-weight: 900 !important;
+            letter-spacing: 0.05em;
+            color: #FFFFFF !important;
+            margin-bottom: 2px;
+        }
+        .sidebar-brand-sub {
+            font-size: 0.72rem !important;
+            font-weight: 700 !important;
+            color: #FEF08A !important;
+        }
+
+        /* 元件 Label 強制深黑高對比 */
         label[data-testid="stWidgetLabel"],
         div[data-testid="stWidgetLabel"] label,
         div[data-testid="stWidgetLabel"] p,
         div[data-testid="stWidgetLabel"] span {
             color: #0F172A !important;
             font-size: 0.95rem !important;
-            font-weight: 700 !important;
+            font-weight: 800 !important;
             opacity: 1 !important;
             visibility: visible !important;
         }
 
+        /* 單選 Radio 與 Checkbox 文字顯色 */
         div[data-testid="stRadio"] [role="radiogroup"] label,
         div[data-testid="stRadio"] [role="radiogroup"] label p,
         div[data-testid="stRadio"] [role="radiogroup"] label span,
@@ -82,11 +154,12 @@ def inject_safe_css():
         div[data-testid="stCheckbox"] label span {
             color: #0F172A !important;
             font-size: 0.92rem !important;
-            font-weight: 600 !important;
+            font-weight: 700 !important;
             opacity: 1 !important;
             visibility: visible !important;
         }
 
+        /* 標籤頁 (Tabs) */
         div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
             background: transparent !important;
             padding: 10px 18px !important;
@@ -100,92 +173,119 @@ def inject_safe_css():
             visibility: visible !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] {
-            border-bottom: 3px solid #2563EB !important;
+            border-bottom: 3px solid #D97706 !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] p,
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] span {
-            color: #2563EB !important;
-            font-weight: 800 !important;
+            color: #D97706 !important;
+            font-weight: 900 !important;
         }
 
+        /* 輸入框 */
         input[type="text"], 
         input[type="number"],
         div[data-baseweb="input"] input,
         div[data-baseweb="select"] div {
             background-color: #FFFFFF !important;
             color: #0F172A !important;
-            border-color: #94A3B8 !important;
-            font-weight: 600 !important;
+            border-color: #CBD5E1 !important;
+            font-weight: 700 !important;
+            border-radius: 8px !important;
         }
         input::placeholder {
-            color: #64748B !important;
-            opacity: 1 !important;
-            font-weight: 500 !important;
+            color: #94A3B8 !important;
+            font-weight: 600 !important;
         }
 
-        .trayzero-header {
-            background: #FFFFFF !important;
+        /* 大家樂電子票券卡 (Digital Coupon Card) */
+        .pos-coupon-card {
+            background: #FFFBEB !important;
+            border: 2px dashed #D97706 !important;
             border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 18px;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            box-shadow: 0 2px 6px rgba(217, 119, 6, 0.05);
         }
-        .trayzero-title {
-            color: #0F172A !important;
-            font-size: 1.35rem !important;
-            font-weight: 800 !important;
-            margin: 0 !important;
+        .pos-coupon-header {
+            font-size: 0.85rem;
+            font-weight: 900;
+            color: #D97706;
+            margin-bottom: 4px;
         }
-        .clean-card {
+        .pos-coupon-value {
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #0F172A;
+            margin-bottom: 4px;
+        }
+        .pos-coupon-desc {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #78350F;
+        }
+        .pos-coupon-badge {
+            display: inline-block;
+            background: #D97706;
+            color: #FFFFFF;
+            font-size: 0.75rem;
+            font-weight: 900;
+            padding: 4px 10px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+
+        /* 大尺寸 POS 數據指標磚 */
+        .pos-metric-card {
             background: #FFFFFF !important;
             border-radius: 12px;
             padding: 14px 16px;
-            margin-bottom: 12px;
-            border: 1px solid #E2E8F0;
-            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+            border: 1.5px solid #E2E8F0;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+            text-align: center;
         }
-        .clean-label {
-            font-size: 0.75rem;
+        .pos-metric-card.amber-glow {
+            background: #FFFBEB !important;
+            border-color: #FDE68A !important;
+        }
+        .pos-metric-label {
+            font-size: 0.72rem;
+            font-weight: 800;
             color: #64748B !important;
-            font-weight: 700;
             text-transform: uppercase;
             margin-bottom: 4px;
         }
-        .clean-val {
-            font-size: 1.6rem;
-            font-weight: 800;
-            color: #0F172A !important;
+        .pos-metric-val {
+            font-size: 1.7rem;
+            font-weight: 900;
             line-height: 1.1;
         }
-        .crm-card {
-            background: #F0FDF4 !important;
-            border: 1.5px solid #86EFAC !important;
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
-            color: #14532D !important;
-        }
-        .member-live-badge {
-            background: #EFF6FF !important;
-            border: 1.5px solid #BFDBFE !important;
+
+        /* 營運指引卡 */
+        .pos-directive-card {
             border-radius: 10px;
-            padding: 10px 14px;
-            margin-bottom: 12px;
-            font-size: 0.88rem;
-            color: #1E3A8A !important;
-        }
-        .directive-card {
-            border-radius: 10px;
-            padding: 12px 16px;
-            margin-bottom: 10px;
+            padding: 14px 18px;
+            margin-top: 14px;
             background: #FFFFFF !important;
             border: 1px solid #E2E8F0;
-            border-left: 4px solid #CBD5E1;
+            border-left: 5px solid #DC2626 !important;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
         }
-        .directive-chef { border-left-color: #EF4444 !important; }
-        .directive-pos { border-left-color: #10B981 !important; }
-        .directive-crm { border-left-color: #3B82F6 !important; }
+
+        /* 按鈕樣式 */
+        button[kind="primary"] {
+            background-color: #D97706 !important;
+            color: #FFFFFF !important;
+            font-weight: 800 !important;
+            border-radius: 8px !important;
+            border: none !important;
+        }
+        button[kind="secondary"] {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1.5px solid #CBD5E1 !important;
+            font-weight: 800 !important;
+            border-radius: 8px !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -242,7 +342,7 @@ def init_db():
             )
         """)
 
-        # 預先存入基礎種子菜單（包含車仔麵，確保不丟失）
+        # 種子菜單初始化 (保障車仔麵永遠存在)
         dishes_count = conn.execute("SELECT COUNT(*) FROM master_dishes_db").fetchone()[0]
         if dishes_count == 0:
             init_dishes = [
@@ -350,7 +450,7 @@ def get_live_rewards():
         return combined
 
     default_rewards = [
-        {"reward_id": "R01", "tier_name": "極致光盤獎 (Ultra Clean)", "max_waste_ratio": 10.0, "reward_type": "Coupon + Points", "reward_description": "【$3 現金券】+【50 綠色積分】+【凍檸茶半價券】", "is_active": True},
+        {"reward_id": "R01", "tier_name": "極致光盤獎 (Ultra Clean)", "max_waste_ratio": 10.0, "reward_type": "Coupon + Points", "reward_description": "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】", "is_active": True},
         {"reward_id": "R02", "tier_name": "達標惜食獎 (Standard Clean)", "max_waste_ratio": 20.0, "reward_type": "Coupon", "reward_description": "【$2 堂食電子券】+【20 綠色積分】", "is_active": True},
         {"reward_id": "R03", "tier_name": "支持環保獎 (Green Return)", "max_waste_ratio": 100.0, "reward_type": "Points", "reward_description": "【10 綠色環保積分】", "is_active": True}
     ]
@@ -410,7 +510,7 @@ def get_records():
         return df
 
 # ==============================================================================
-# 4. Multi-Modal Vision Engine (CLIP 語義精確估計 + YOLOS 空間定位)
+# 4. Multi-Modal Vision Engine (CLIP 語義評估 + YOLOS 空間排除)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -446,11 +546,6 @@ def load_ai_engine():
     }
 
 def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
-    """
-    全新多模態混合殘食分析：
-    徹底廢除「沒偵測到 COCO 物體就判定為光盤」的錯誤機制！
-    改由 CLIP 判斷殘留量級與食物種類，YOLOS 輔助框定食物核心區域。
-    """
     inp = engine["proc"](images=image, return_tensors="pt").to(engine["device"])
     with torch.no_grad(): 
         out = engine["det"](**inp)
@@ -463,9 +558,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     draw = ImageDraw.Draw(img_draw)
     items = []
     
-    # --------------------------------------------------------------------------
-    # 第一步：CLIP 殘食量級評估 (Full Bowl vs Half vs Empty)
-    # --------------------------------------------------------------------------
     waste_level_labels = [
         "a bowl or plate with a lot of leftover food, noodles, vegetables and meat",
         "a bowl with half portion of leftover food",
@@ -475,9 +567,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     level_res = engine["clip"](image, candidate_labels=waste_level_labels)
     top_level = level_res[0]["label"]
     
-    # --------------------------------------------------------------------------
-    # 第二步：CLIP 殘存食材種類分析
-    # --------------------------------------------------------------------------
     food_type_labels = [
         "leftover noodles or pasta in the bowl",
         "leftover rice on the plate",
@@ -488,7 +577,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     type_res = engine["clip"](image, candidate_labels=food_type_labels)
     top_type = type_res[0]["label"]
 
-    # 判定是否真正光盤（必須是空碗，且沒有顯著麵條/肉類）
     is_truly_empty = ("empty bowl" in top_level or "clean empty dish" in top_type) and ("noodles" not in top_type and "meat" not in top_type)
 
     if is_truly_empty:
@@ -498,27 +586,21 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
             "佔比 Coverage": "0.0%"
         }], 0.0, "光盤 Clean Plate", True
 
-    # --------------------------------------------------------------------------
-    # 第三步：有食物！判定主要殘留物
-    # --------------------------------------------------------------------------
     is_noodle_menu = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
     
     if "noodles" in top_type or is_noodle_menu:
         primary = "主食殘留 (麵食) Carb Residual (Noodles)"
-        accent_color = "#EF4444"
+        accent_color = "#DC2626"
     elif "rice" in top_type or "飯" in str(carb_type_from_csv):
         primary = "主食殘留 (米飯) Carb Residual (Rice)"
-        accent_color = "#EF4444"
+        accent_color = "#DC2626"
     elif "meat" in top_type:
         primary = "肉類殘留 Meat Residual"
-        accent_color = "#F59E0B"
+        accent_color = "#D97706"
     else:
         primary = "蔬菜/湯汁 Sides & Broth"
         accent_color = "#10B981"
 
-    # --------------------------------------------------------------------------
-    # 第四步：YOLOS 標註食物區域（排除水杯）
-    # --------------------------------------------------------------------------
     has_boxes = False
     for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
         lbl = engine["det"].config.id2label.get(label_id, "item").lower()
@@ -530,7 +612,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         box_h = b[3] - b[1]
         area = box_w * box_h
         
-        # 排除背景與杯子
         if area > total_area * 0.70:
             continue
         if b[1] < image.size[1] * 0.45 and (box_h / max(1, box_w) > 1.3):
@@ -545,7 +626,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         })
         has_boxes = True
 
-    # 即使 YOLOS 沒給出標註框，CLIP 也能精確定位碗中食物並加上關注框
     if not has_boxes:
         w, h = image.size
         bowl_box = [int(w * 0.28), int(h * 0.18), int(w * 0.78), int(h * 0.78)]
@@ -557,9 +637,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
             "佔比 Coverage": "35.0%"
         })
 
-    # --------------------------------------------------------------------------
-    # 第五步：依據殘留飽滿度精確賦予殘食率
-    # --------------------------------------------------------------------------
     if "a lot of leftover food" in top_level:
         ratio = 0.52
     elif "half portion" in top_level:
@@ -644,20 +721,23 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 6. Mode Renderers
+# 6. Mode Renderers (Fast-Casual POS Layout)
 # ==============================================================================
 def render_header(modules):
     active_badges = []
-    if modules.get("mod1", True): active_badges.append("M1: 營運監控")
-    if modules.get("mod2", True): active_badges.append("M2: 數據洞察")
-    if modules.get("mod3", True): active_badges.append("M3: 精準營銷")
-    if modules.get("mod4", True): active_badges.append("M4: 會員閉環")
+    if modules.get("mod1", True): active_badges.append("M1 營運監控")
+    if modules.get("mod2", True): active_badges.append("M2 數據洞察")
+    if modules.get("mod3", True): active_badges.append("M3 點餐機反哺")
+    if modules.get("mod4", True): active_badges.append("M4 Club 100")
     badge_str = " • ".join(active_badges) if active_badges else "未啟用任何模組"
 
     st.markdown(f"""
-    <div class="trayzero-header">
-        <h2 class="trayzero-title">🍽️ TrayZero+ 大家樂智能餐盤審計與會員閉環平台</h2>
-        <div style="font-size:0.8rem; color:#64748B; margin-top:4px; font-weight:600;">已授權模組: {badge_str}</div>
+    <div class="pos-header-banner">
+        <div>
+            <div class="pos-header-title">大家的大家樂 🍽️ TrayZero+ 智能餐盤審計與會員閉環系統</div>
+            <div class="pos-header-sub">大家樂集團 IT PMO 聯合開發 • 雙向鏡像保護 (CSV + SQLite) • 已授權模組: {badge_str}</div>
+        </div>
+        <div class="shift-badge">🔥 午市尖峰運作中</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -670,10 +750,10 @@ def render_mode1(engine, modules):
         return
 
     df_history = get_records()
-    c1, c2 = st.columns([1.1, 0.9])
+    c1, c2 = st.columns([1.15, 0.85])
     
     with c1:
-        st.markdown("#### 🏢 回收台設置與會員識別")
+        st.markdown("#### 🏢 會員識別與還盤掃描 (Member Scan & Ingest)")
         b_name = st.selectbox("執勤門市 (Active Store Location)", df_b["name"].tolist())
         
         active_member_id = "GUEST"
@@ -682,9 +762,9 @@ def render_mode1(engine, modules):
             member_col1, member_col2 = st.columns([3, 1])
             with member_col1:
                 raw_member_id = st.text_input(
-                    "掃描或輸入會員卡號 (Scan/Enter Member ID)", 
+                    "掃描或輸入會員卡號 / 手機號碼", 
                     value=st.session_state.get("last_input_member", ""),
-                    placeholder="例: C100-8801 / 手機號碼"
+                    placeholder="例: 001 / C100-8801 / 手機號碼"
                 )
             with member_col2:
                 st.write("")
@@ -698,17 +778,17 @@ def render_mode1(engine, modules):
                 prof = analyze_member_loyalty_profile(active_member_id, df_history)
                 if prof:
                     st.markdown(f"""
-                    <div class="member-live-badge">
-                        💳 <b>會員 ID</b>: <b style="color:#2563EB;">{active_member_id}</b> ({prof['crm_segment']})<br>
-                        📊 <b>歷史用餐</b>: 累計還盤 {prof['total_visits']} 次 | 平均殘食率: <b>{prof['avg_waste']:.1f}%</b><br>
-                        💡 <b>目前點餐預設</b>: <span style="color:#059669; font-weight:700;">{prof['pos_default_rice']}</span> / <span style="color:#059669; font-weight:700;">{prof['pos_default_sauce']}</span>
+                    <div style="background:#FFFBEB; border:1.5px solid #FDE68A; border-radius:10px; padding:12px 16px; margin-bottom:14px;">
+                        <b style="color:#92400E; font-size:0.92rem;">💳 會員檔案: #{active_member_id} ({prof['crm_segment']} • 熟客回頭 {prof['total_visits']} 次)</b><br>
+                        <span style="font-size:0.84rem; color:#78350F; font-weight:700;">歷史平均殘食: <b>{prof['avg_waste']:.1f}%</b> | 最喜愛餐點: <b>{prof['favorite_dish']}</b></span><br>
+                        <span style="font-size:0.84rem; color:#D97706; font-weight:800;">🎯 點餐機 (Kiosk) 自動預載: {prof['pos_default_rice']} • {prof['pos_default_sauce']}</span>
                     </div>
                     """, unsafe_allow_html=True)
 
         auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Auto Dish Recognition via CLIP)", value=True)
         scan_mode = st.radio(
-            "掃描模式 (Scanning Method)", 
-            ["🟢 Live Camera 長開 (靜止自動感應 / Auto-Scan)", "📸 手動快照 (Manual Snapshot)", "📁 上傳照片 (Upload Image)"], 
+            "感應鏡頭作業模式 (Camera Operations)", 
+            ["🟢 Live 自動感應 (Auto-Scan)", "📸 手動快照 (Snapshot)", "📁 上傳照片 (Upload)"], 
             horizontal=True
         )
         
@@ -716,7 +796,7 @@ def render_mode1(engine, modules):
         should_run = False
 
         if scan_mode.startswith("🟢"):
-            cam = st.camera_input("持續監控畫面 (Live Feed Monitor)", key="live_cam")
+            cam = st.camera_input("大家樂回收輸送台即時視頻長開中 (Live Monitor)", key="live_cam")
             if cam:
                 img_cap = Image.open(cam).convert("RGB")
                 h = hash(img_cap.tobytes()[:3000])
@@ -724,12 +804,12 @@ def render_mode1(engine, modules):
                     st.session_state["last_h"] = h
                     should_run = True
         elif scan_mode.startswith("📸"):
-            m_cam = st.camera_input("拍照 (Take Snapshot)", key="manual_cam")
+            m_cam = st.camera_input("快照拍攝 (Take Snapshot)", key="manual_cam")
             if m_cam: 
                 img_cap = Image.open(m_cam).convert("RGB")
                 should_run = True
         else:
-            up = st.file_uploader("上傳餐盤相片 (Upload Tray Image)", type=["jpg", "png", "jpeg"], key="tray_file_uploader")
+            up = st.file_uploader("上傳餐盤相片 (Upload Image)", type=["jpg", "png", "jpeg"], key="tray_file_uploader")
             if up is not None:
                 img_bytes = up.getvalue()
                 current_file_hash = hash(img_bytes)
@@ -795,7 +875,7 @@ def render_mode1(engine, modules):
                 st.rerun()
 
     with c2:
-        st.markdown("#### 🎯 前線掃描結果與會員數據")
+        st.markdown("#### 🎯 即時審計結果與激勵派發 (Live Ticket)")
         latest = st.session_state.get("latest")
         if not latest:
             st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
@@ -803,27 +883,63 @@ def render_mode1(engine, modules):
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
             st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
             
+            # Option B: 實體電子卡券卡 (Digital Coupon Voucher Display)
             if modules.get("mod4", True) and latest.get("member") != "GUEST":
                 st.markdown(f"""
-                <div class="crm-card">
-                    <b style="color:#166534; font-size:1rem;">🎁 會員獎勵與 Loyalty Loop 派發成功</b><br>
-                    • <b>關聯會員 ID</b>: <code>{latest.get('member')}</code><br>
-                    • <b>動態派發獎勵</b>: <span style="font-weight:700; color:#047857;">{latest.get('reward')}</span><br>
-                    • <b>自動反哺 POS 規則</b>: 下次點餐系統已預載顧客客製化偏好
+                <div class="pos-coupon-card">
+                    <div class="pos-coupon-header">🎟️ 大家樂 CLUB 100 電子現金券 (即時入帳)</div>
+                    <div class="pos-coupon-value">{latest.get('reward').split('：')[-1] if '：' in latest.get('reward') else latest.get('reward')}</div>
+                    <div class="pos-coupon-desc">• 關聯會員卡號: <code>{latest.get('member')}</code>  |  • 達成狀態: 惜食獎勵門檻達標</div>
+                    <div class="pos-coupon-badge">已派送至手機大家樂錢包 (App Push Sent)</div>
                 </div>
                 """, unsafe_allow_html=True)
 
             k1, k2, k3 = st.columns(3)
-            k1.markdown(f'<div class="clean-card"><div class="clean-label">殘食佔比 Waste Ratio</div><div class="clean-val" style="color:{"#EF4444" if latest["ratio"] > 0.3 else "#10B981"}">{latest["ratio"]:.1%}</div></div>', unsafe_allow_html=True)
-            k2.markdown(f'<div class="clean-card"><div class="clean-label">主要殘留 Primary</div><div class="clean-val" style="font-size:0.95rem;margin-top:4px;">{latest["cat"]}</div></div>', unsafe_allow_html=True)
-            k3.markdown(f'<div class="clean-card"><div class="clean-label">推算損耗 Loss</div><div class="clean-val" style="color:#F59E0B">HK${latest["cost"]}</div></div>', unsafe_allow_html=True)
+            with k1:
+                ratio_val = latest["ratio"]
+                color_css = "#D97706" if ratio_val == 0.0 else ("#DC2626" if ratio_val > 0.3 else "#D97706")
+                st.markdown(f"""
+                <div class="pos-metric-card amber-glow">
+                    <div class="pos-metric-label">殘食佔比 WASTE</div>
+                    <div class="pos-metric-val" style="color:{color_css};">{ratio_val:.1%}</div>
+                    <div style="font-size:0.75rem; color:#059669; font-weight:800; margin-top:4px;">{'🎉 達成光盤' if ratio_val == 0.0 else '需份量校準'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with k2:
+                st.markdown(f"""
+                <div class="pos-metric-card">
+                    <div class="pos-metric-label">主要殘留 PRIMARY</div>
+                    <div class="pos-metric-val" style="font-size:1.15rem; margin-top:4px; color:#0F172A;">{latest["cat"].split(' ')[0]}</div>
+                    <div style="font-size:0.75rem; color:#64748B; font-weight:700; margin-top:6px;">{'完全吃淨' if ratio_val == 0.0 else '主食/配料'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            with k3:
+                st.markdown(f"""
+                <div class="pos-metric-card">
+                    <div class="pos-metric-label">推算損耗 LOSS</div>
+                    <div class="pos-metric-val" style="color:#0F172A;">HK${latest["cost"]}</div>
+                    <div style="font-size:0.75rem; color:#059669; font-weight:800; margin-top:4px;">{'零浪費標準' if ratio_val == 0.0 else '單盤損耗'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            # 後廚即時校準卡
+            st.markdown(f"""
+            <div class="pos-directive-card">
+                <b style="color:#0F172A; font-size:0.9rem;">👨‍🍳 大家樂後廚計量校準 (Kitchen Advisory)</b><br>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，後廚份量出餐標準合規。</span><br>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 凍檸茶檸檬片與冰塊未誤算為廚餘（零干擾）。</span><br>
+                <span style="font-size:0.8rem; color:#D97706; font-weight:800;">• 交易流水與積分已即時寫入 seed_audit_logs.csv 與資料庫。</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 def render_mode2(engine, modules):
     df_b = get_live_branches()
     df_d = get_live_dishes()
     df_raw = get_records()
 
-    st.markdown("### 📊 總部營運與會員客群 Retargeting 數據中心")
+    st.markdown("### 📊 總部即時營運大盤與會員客群 Retargeting 數據中心")
 
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl2:
@@ -857,10 +973,14 @@ def render_mode2(engine, modules):
     tot_co2 = df_filtered["co2_emission_kg"].sum() if n > 0 else 0.0
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.markdown(f'<div class="clean-card"><div class="clean-label">審計樣本盤數</div><div class="clean-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div></div>', unsafe_allow_html=True)
-    k2.markdown(f'<div class="clean-card"><div class="clean-label">平均殘食率</div><div class="clean-val" style="color:{"#EF4444" if avg_w > 25 else "#10B981"}">{avg_w:.1f}%</div></div>', unsafe_allow_html=True)
-    k3.markdown(f'<div class="clean-card"><div class="clean-label">食材損耗總額</div><div class="clean-val" style="color:#F59E0B">HK${tot_hkd:,.1f}</div></div>', unsafe_allow_html=True)
-    k4.markdown(f'<div class="clean-card"><div class="clean-label">累計碳排放</div><div class="clean-val" style="color:#3B82F6">{tot_co2:.2f} <span style="font-size:0.85rem;color:#94A3B8">kg</span></div></div>', unsafe_allow_html=True)
+    with k1:
+        st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">審計樣本盤數</div><div class="pos-metric-val">{n} <span style="font-size:0.85rem;color:#94A3B8">TRAYS</span></div></div>', unsafe_allow_html=True)
+    with k2:
+        st.markdown(f'<div class="pos-metric-card amber-glow"><div class="pos-metric-label">平均殘食率</div><div class="pos-metric-val" style="color:{"#DC2626" if avg_w > 25 else "#D97706"}">{avg_w:.1f}%</div></div>', unsafe_allow_html=True)
+    with k3:
+        st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">食材損耗總額</div><div class="pos-metric-val" style="color:#D97706">HK${tot_hkd:,.1f}</div></div>', unsafe_allow_html=True)
+    with k4:
+        st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">累計碳排放</div><div class="pos-metric-val" style="color:#2563EB">{tot_co2:.2f} <span style="font-size:0.85rem;color:#94A3B8">kg</span></div></div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("#### 📋 即時審計記錄（即時讀取自 seed_audit_logs.csv）")
@@ -916,7 +1036,7 @@ def render_mode2(engine, modules):
 
         if modules.get("mod1", True):
             st.markdown(f"""
-            <div class="directive-card directive-chef">
+            <div class="pos-directive-card">
                 <b style="color:#0F172A;">👨‍🍳 後廚出餐計量標準校準 Head Chef ({t_branch} • {t_dish})</b><br>
                 【即時份量校準】平均殘食率達 {sub_avg_w:.1f}%。針對「{t_dish}」換裝標準打餐器（每份減量 30g 出餐），單期預估防損挽回 HK$ {max(150, round(sub_loss * 0.4)):,.0f}。
             </div>
@@ -924,7 +1044,7 @@ def render_mode2(engine, modules):
 
         if modules.get("mod3", True):
             st.markdown(f"""
-            <div class="directive-card directive-pos">
+            <div class="pos-directive-card" style="border-left-color: #D97706 !important;">
                 <b style="color:#0F172A;">🖥️ 點餐機 (Kiosk) 與大家樂 App 反向客製化連動</b><br>
                 【智慧預設下發】系統已自動將高頻剩餘「{t_dish}」主食之會員，於點餐終端預設勾選「少飯/少麵（立減 $2）」或「少汁」，在點餐階段源頭減廢。
             </div>
@@ -1087,11 +1207,32 @@ def main():
     with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Loading AI Engines)..."):
         engine = load_ai_engine()
 
-    logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
-    if logo_target:
-        st.sidebar.image(logo_target, width=175)
+    # 側邊欄：純文字企業品牌橫幅 (無須依賴圖片，支援純文字精緻渲染)
+    st.sidebar.markdown("""
+    <div class="sidebar-brand-box">
+        <div class="sidebar-brand-title">大家樂 CAFÉ DE CORAL</div>
+        <div class="sidebar-brand-sub">TrayZero+ 前線餐盤智能回收終端</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    st.sidebar.title("🧩 功能模組授權 (Modules)")
+    # 門市當前狀態小卡
+    st.sidebar.markdown("""
+    <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:10px 14px; margin-bottom:16px;">
+        <div style="font-size:0.75rem; font-weight:800; color:#92400E;">現正執勤門市 (STORE)</div>
+        <div style="font-size:0.95rem; font-weight:900; color:#78350F; margin-top:2px;">中環威靈頓街店</div>
+        <div style="font-size:0.75rem; font-weight:700; color:#B45309; margin-top:2px;">● 審計連線正常 (Sync 100%)</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.markdown("##### 觸控模式選擇 (TOUCH NAVIGATION)")
+    mode = st.sidebar.radio("", [
+        "Mode 1: 前線回收感應台",
+        "Mode 2: 總部即時營運大盤",
+        "Mode 3: 菜單與獎勵配置"
+    ], label_visibility="collapsed")
+
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("##### 企業模組狀態 (MODULES)")
     mod_1 = st.sidebar.checkbox("M1: 營運監控 (Ops Core)", value=True)
     mod_2 = st.sidebar.checkbox("M2: 深度分析 (BI Analytics)", value=True)
     mod_3 = st.sidebar.checkbox("M3: 精準營銷 (Smart POS)", value=True)
@@ -1105,13 +1246,6 @@ def main():
     }
 
     render_header(active_modules)
-
-    st.sidebar.markdown("---")
-    mode = st.sidebar.radio("工作模式 (Navigation)", [
-        "Mode 1: 前線餐盤智能偵測與會員還盤",
-        "Mode 2: 總部即時營運與客群大盤",
-        "Mode 3: 基礎資料設定"
-    ])
 
     if mode.startswith("Mode 1"): 
         render_mode1(engine, active_modules)

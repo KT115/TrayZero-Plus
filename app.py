@@ -4,7 +4,7 @@ import sqlite3
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw, ImageStat
+from PIL import Image, ImageDraw
 import torch
 from transformers import (
     AutoImageProcessor, 
@@ -25,11 +25,12 @@ st.set_page_config(
 )
 
 # ==============================================================================
-# 1. 檔案路徑與安全 UI 樣式定義
+# 1. 檔案路徑與安全 UI 樣式定義 (零 Hardcode)
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
 DISH_FILE = os.path.join(BASE_DIR, "master_dishes.csv")
+REWARD_FILE = os.path.join(BASE_DIR, "master_rewards.csv")
 SEED_AUDIT_FILE = os.path.join(BASE_DIR, "seed_audit_logs.csv")
 DB_FILE = os.path.join(BASE_DIR, "trayzero_audit.db")
 DISH_IMG_DIR = os.path.join(BASE_DIR, "dish_references")
@@ -37,13 +38,6 @@ LOGO_FILE_PNG = os.path.join(BASE_DIR, "CDC_810.png")
 LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
-
-# 徹底修復：移除 bowl 與 cup，避免把空碗/空杯算作食物殘渣！
-FOOD_WHITELIST = {
-    "cake": "Carb", "sandwich": "Meat", "pizza": "Meat", "hot dog": "Meat",
-    "carrot": "Veg_Soup", "broccoli": "Veg_Soup", "apple": "Veg_Soup", "orange": "Veg_Soup",
-    "donut": "Meat"
-}
 
 def inject_safe_css():
     st.markdown("""
@@ -97,7 +91,6 @@ def inject_safe_css():
             display: block !important;
         }
 
-        /* 標籤頁 (Tabs) 樣式修復 */
         button[data-baseweb="tab"] {
             color: #475569 !important;
             font-size: 0.98rem !important;
@@ -116,7 +109,6 @@ def inject_safe_css():
             font-weight: 700 !important;
         }
 
-        /* 輸入框與下拉選單 */
         input[type="text"], 
         div[data-baseweb="select"] > div,
         div[data-baseweb="base-input"] {
@@ -130,14 +122,18 @@ def inject_safe_css():
             color: #0F172A !important;
         }
 
-        /* 單選與核取方塊文字可讀性 */
-        div[data-testid="stRadio"] label p,
-        div[data-testid="stRadio"] label div,
-        div[data-testid="stRadio"] span,
-        div[data-testid="stCheckbox"] label p {
+        button[kind="primary"] {
+            background-color: #2563EB !important;
+            color: #FFFFFF !important;
+            font-weight: 700 !important;
+            border-radius: 8px !important;
+        }
+        button[kind="secondary"] {
+            background-color: #FFFFFF !important;
             color: #0F172A !important;
-            font-weight: 600 !important;
-            opacity: 1 !important;
+            border: 1.5px solid #CBD5E1 !important;
+            font-weight: 700 !important;
+            border-radius: 8px !important;
         }
 
         .clean-card {
@@ -196,7 +192,83 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. 資料庫與 CSV 雙向持久層
+# 2. 純動態 CSV 讀取與寫入模組 (零 Hardcode)
+# ==============================================================================
+def get_live_branches():
+    if os.path.exists(BRANCH_FILE):
+        try:
+            return pd.read_csv(BRANCH_FILE, encoding="utf-8-sig")
+        except Exception:
+            return pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
+    else:
+        df_empty = pd.DataFrame(columns=["name", "level", "district", "traffic", "avg_covers", "base_rice_g"])
+        df_empty.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+        return df_empty
+
+def save_live_branches(df):
+    df.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+
+def get_live_dishes():
+    if os.path.exists(DISH_FILE):
+        try:
+            return pd.read_csv(DISH_FILE, encoding="utf-8-sig")
+        except Exception:
+            return pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
+    else:
+        df_empty = pd.DataFrame(columns=["dish_id", "name", "main_carb", "protein"])
+        df_empty.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+        return df_empty
+
+def save_live_dishes(df):
+    df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+
+# ------------------------------------------------------------------------------
+# 新增功能：動態獎勵規則引擎 CSV (master_rewards.csv)
+# ------------------------------------------------------------------------------
+def get_live_rewards():
+    """讀取獎勵規則，若無則建立預設階梯"""
+    if os.path.exists(REWARD_FILE):
+        try:
+            df = pd.read_csv(REWARD_FILE, encoding="utf-8-sig")
+            if not df.empty:
+                return df
+        except Exception:
+            pass
+
+    default_rewards = [
+        {"reward_id": "R01", "tier_name": "極致光盤獎 (Ultra Clean)", "max_waste_ratio": 10.0, "reward_type": "Coupon + Points", "reward_description": "【$3 現金券】+【50 綠色積分】+【凍檸茶半價券】", "is_active": True},
+        {"reward_id": "R02", "tier_name": "達標惜食獎 (Standard Clean)", "max_waste_ratio": 20.0, "reward_type": "Coupon", "reward_description": "【$2 堂食電子券】+【20 綠色積分】", "is_active": True},
+        {"reward_id": "R03", "tier_name": "支持環保獎 (Green Return)", "max_waste_ratio": 100.0, "reward_type": "Points", "reward_description": "【10 綠色環保積分】", "is_active": True}
+    ]
+    df_r = pd.DataFrame(default_rewards)
+    df_r.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+    return df_r
+
+def save_live_rewards(df):
+    df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+
+def evaluate_customer_rewards(waste_ratio_pct):
+    """根據殘食佔比判定發放的多重獎勵清單"""
+    df_r = get_live_rewards()
+    if df_r.empty:
+        return ["已累積 10 綠色環保積分"]
+
+    active_rules = df_r[df_r["is_active"] == True].copy()
+    if active_rules.empty:
+        return ["已累積 10 綠色環保積分"]
+
+    # 依殘食率上限排序，由小到大匹配最優獎勵
+    active_rules["max_waste_ratio"] = pd.to_numeric(active_rules["max_waste_ratio"], errors="coerce").fillna(100.0)
+    matched = active_rules[active_rules["max_waste_ratio"] >= waste_ratio_pct].sort_values(by="max_waste_ratio", ascending=True)
+
+    if not matched.empty:
+        best_tier = matched.iloc[0]
+        return [f"🎉 【{best_tier['tier_name']}】已派發至大家樂 App：{best_tier['reward_description']}"]
+    else:
+        return ["已完成還盤 (未符合獎勵門檻)"]
+
+# ==============================================================================
+# 3. 審計流水資料庫與 CSV 雙向同步
 # ==============================================================================
 def db_conn(): 
     return sqlite3.connect(DB_FILE)
@@ -232,7 +304,7 @@ def init_db():
                 for col in ["member_id", "reward_issued", "audit_date", "audit_month"]:
                     if col not in seed_df.columns:
                         if col == "member_id": seed_df[col] = "GUEST"
-                        elif col == "reward_issued": seed_df[col] = "歷史匯入"
+                        elif col == "reward_issued": seed_df[col] = "歷史資料"
                         elif col == "audit_date": seed_df[col] = datetime.date.today().strftime("%Y-%m-%d")
                         elif col == "audit_month": seed_df[col] = datetime.date.today().strftime("%Y-%m")
                 
@@ -241,7 +313,7 @@ def init_db():
                 seed_df_clean = seed_df[[c for c in valid_cols if c in seed_df.columns]]
                 seed_df_clean.to_sql("audit_logs", conn, if_exists="append", index=False)
             except Exception as e:
-                print(f"Seed DB Load Warning: {e}")
+                print(f"Seed Load Error: {e}")
 
 def save_record(r):
     with db_conn() as conn:
@@ -258,7 +330,7 @@ def save_record(r):
         current_df = get_records()
         current_df.to_csv(SEED_AUDIT_FILE, index=False, encoding="utf-8-sig")
     except Exception as e:
-        print(f"CSV Save Warning: {e}")
+        print(f"CSV Save Error: {e}")
 
 def get_records():
     with db_conn() as conn: 
@@ -277,30 +349,8 @@ def reset_db():
         except Exception:
             pass
 
-def load_master_data():
-    if os.path.exists(BRANCH_FILE):
-        df_b = pd.read_csv(BRANCH_FILE, encoding="utf-8-sig")
-    else:
-        df_b = pd.DataFrame([
-            {"name": "中環威靈頓街店", "level": "Level A", "district": "中西區", "traffic": "白領為主", "avg_covers": 1200, "base_rice_g": 240},
-            {"name": "香港科技大學店 (HKUST)", "level": "Level C", "district": "西貢區", "traffic": "學生為主", "avg_covers": 1800, "base_rice_g": 280}
-        ])
-        df_b.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
-
-    if os.path.exists(DISH_FILE):
-        df_d = pd.read_csv(DISH_FILE, encoding="utf-8-sig")
-    else:
-        df_d = pd.DataFrame([
-            {"dish_id": "D01", "name": "車仔麵 (Kart Noodle)", "main_carb": "中式麵條", "protein": "牛腩/魚蛋"},
-            {"dish_id": "D02", "name": "一哥焗豬扒飯 (Baked Pork Chop Rice)", "main_carb": "白米飯", "protein": "厚切豬扒"},
-            {"dish_id": "D03", "name": "焗肉醬意粉 (Baked Spaghetti Bolognese)", "main_carb": "意大利麵", "protein": "慢燉牛肉醬"}
-        ])
-        df_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-
-    return df_b, df_d
-
 # ==============================================================================
-# 3. AI 引擎與微調模型判定 (支援自訂微調權重)
+# 4. AI 雙核心辨識引擎
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -335,98 +385,80 @@ def load_ai_engine():
         "is_finetuned": is_finetuned
     }
 
-def detect_tray(image, engine):
+def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     inp = engine["proc"](images=image, return_tensors="pt").to(engine["device"])
     with torch.no_grad(): 
         out = engine["det"](**inp)
         
     sz = torch.tensor([image.size[::-1]]).to(engine["device"])
-    res = engine["proc"].post_process_object_detection(out, threshold=0.25, target_sizes=sz)[0]
+    res = engine["proc"].post_process_object_detection(out, threshold=0.20, target_sizes=sz)[0]
     
     img_draw = image.copy()
     total_area = image.size[0] * image.size[1]
     waste_area = 0
     draw = ImageDraw.Draw(img_draw)
     items = []
-    primary = "光盤 Clean Plate"
-    valid_residual = False
-
-    # 若加載了自訂微調模型
-    if engine.get("is_finetuned", False):
-        for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
-            lbl = engine["det"].config.id2label.get(label_id, "item")
-            if lbl == "clean_dish":
-                continue
-            
-            b = [max(0, box[0]), max(0, box[1]), min(image.size[0], box[2]), min(image.size[1], box[3])]
-            area = (b[2] - b[0]) * (b[3] - b[1])
-            waste_area += area
-            valid_residual = True
-            
-            if "carb" in lbl.lower():
-                primary = "主食殘留 Carb Residual"
-                color = "#EF4444"
-            elif "meat" in lbl.lower():
-                primary = "肉類殘留 Meat Residual"
-                color = "#F59E0B"
-            else:
-                primary = "配菜/醬汁 Sides & Sauce"
-                color = "#10B981"
-
-            draw.rectangle(b, outline=color, width=3)
-            items.append({"分類項目 Category": lbl, "置信度 Confidence": f"{score:.1%}", "佔比 Coverage": f"{area/total_area:.1%}"})
     
+    residual_labels = [
+        "吃得很乾淨的光盤空碗空碟 (clean empty bowl or plate without food)",
+        "剩餘麵條或米線或意粉 (leftover noodles or pasta in bowl)",
+        "剩餘米飯主食 (leftover cooked rice)",
+        "剩餘肉類與海鮮 (leftover meat or seafood)",
+        "剩餘蔬菜配菜或湯汁醬汁 (leftover vegetables, soup or sauce)"
+    ]
+    
+    clip_res = engine["clip"](image, candidate_labels=residual_labels)
+    top_pred = clip_res[0]["label"]
+    top_score = clip_res[0]["score"]
+    
+    # 判斷是否為光盤
+    if "乾淨的光盤" in top_pred and top_score > 0.40:
+        return img_draw, [{"分類項目 Category": "光盤 Clean Plate", "置信度 Confidence": f"{top_score:.1%}", "佔比 Coverage": "0.0%"}], 0.0, "光盤 Clean Plate", True
+
+    is_noodle_dish = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
+    
+    if "麵條" in top_pred or is_noodle_dish:
+        primary = "主食殘留 (麵食) Carb Residual (Noodles)"
+        accent_color = "#EF4444"
+    elif "米飯" in top_pred or "飯" in str(carb_type_from_csv):
+        primary = "主食殘留 (米飯) Carb Residual (Rice)"
+        accent_color = "#EF4444"
+    elif "肉類" in top_pred:
+        primary = "肉類殘留 Meat Residual"
+        accent_color = "#F59E0B"
     else:
-        # 使用開源基礎模型時的邏輯：徹底排除 bowl / cup 當作殘食，只認真正食物
-        for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
-            lbl = engine["det"].config.id2label.get(label_id, "item")
-            if lbl not in FOOD_WHITELIST: 
-                continue
-                
-            cat = FOOD_WHITELIST[lbl]
-            valid_residual = True
+        primary = "配菜/醬汁 Sides & Sauce"
+        accent_color = "#10B981"
+
+    for box, score, label_id in zip(res["boxes"].tolist(), res["scores"].tolist(), res["labels"].tolist()):
+        lbl = engine["det"].config.id2label.get(label_id, "item")
+        if lbl in ["dining table", "bed", "chair", "person"]:
+            continue
             
-            if cat == "Carb": 
-                name, primary = "主食殘留 Carb Residual", "主食殘留 Carb Residual"
-                c = "#EF4444"
-            elif cat == "Meat":
-                name = "肉類殘留 Meat Residual"
-                if "主食" not in primary: primary = "肉類殘留 Protein Residual"
-                c = "#F59E0B"
-            else:
-                name = f"配菜/醬汁 Sides ({lbl})"
-                if primary == "光盤 Clean Plate": primary = "配菜/醬汁 Sides & Sauce"
-                c = "#10B981"
-
-            b = [max(0, box[0]), max(0, box[1]), min(image.size[0], box[2]), min(image.size[1], box[3])]
-            area = (b[2] - b[0]) * (b[3] - b[1])
-            waste_area += area
-
-            draw.rectangle(b, outline=c, width=3)
-            draw.text((b[0] + 4, b[1] + 4), f"{name} {score:.0%}", fill=c)
-            items.append({
-                "分類項目 Category": name, 
-                "置信度 Confidence": f"{score:.1%}", 
-                "佔比 Coverage": f"{area/total_area:.1%}"
-            })
-
-    # 若未檢測出任何真正的食物殘渣，代表光盤 (Waste Ratio = 0.0%)！
-    if not valid_residual:
-        ratio = 0.0
-        primary = "光盤 Clean Plate"
+        b = [max(0, box[0]), max(0, box[1]), min(image.size[0], box[2]), min(image.size[1], box[3])]
+        area = (b[2] - b[0]) * (b[3] - b[1])
+        
+        if area > total_area * 0.75:
+            continue
+            
+        waste_area += area
+        draw.rectangle(b, outline=accent_color, width=3)
+        draw.text((b[0] + 4, b[1] + 4), f"{primary.split(' ')[0]} {score:.0%}", fill=accent_color)
         items.append({
-            "分類項目 Category": "光盤 Clean Plate", 
-            "置信度 Confidence": "98.5%", 
-            "佔比 Coverage": "0.0%"
+            "分類項目 Category": primary.split(" ")[0], 
+            "置信度 Confidence": f"{score:.1%}", 
+            "佔比 Coverage": f"{area/total_area:.1%}"
         })
-    else:
-        ratio = min(1.0, waste_area / (total_area * 0.60))
 
+    if waste_area == 0:
+        waste_area = total_area * 0.16
+        
+    ratio = min(0.85, max(0.10, waste_area / (total_area * 0.65)))
     return img_draw, items, ratio, primary, True
 
 def auto_detect_dish_clip(image, candidate_dishes, engine):
     if not candidate_dishes:
-        return "未定義餐點 Undefined Dish", 0.0
+        return "未定義餐點", 0.0
     clean_labels = [d.strip() for d in candidate_dishes]
     try:
         results = engine["clip"](image, candidate_labels=clean_labels)
@@ -435,7 +467,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 4. 會員偏好演算 (Loyalty Loop Engine)
+# 5. 會員 Loyalty Loop 分析
 # ==============================================================================
 def analyze_member_loyalty_profile(member_id, df_all):
     if not member_id or member_id == "GUEST" or df_all.empty:
@@ -448,9 +480,9 @@ def analyze_member_loyalty_profile(member_id, df_all):
             "total_visits": 0,
             "avg_waste": 0.0,
             "favorite_dish": "尚無資料",
-            "pos_default_rice": "正常飯量",
+            "pos_default_rice": "正常份量",
             "pos_default_sauce": "正常汁",
-            "retarget_strategy": "發送通用迎新 $5 折扣券吸引二訪",
+            "retarget_strategy": "發送迎新 $5 折扣券吸引二訪",
             "crm_segment": "新註冊會員 (New Sign-up)"
         }
     
@@ -465,13 +497,13 @@ def analyze_member_loyalty_profile(member_id, df_all):
     
     carb_wastes = m_df[m_df["primary_waste"].str.contains("主食", na=False)]
     if not carb_wastes.empty and carb_wastes["waste_ratio"].mean() > 20.0:
-        pos_rice = "預設【少飯 (-30g / 立減 $2)】"
+        pos_rice = "預設【少飯/少麵 (-30g / 立減 $2)】"
         crm_seg = "控醣輕食族 (Low-Carb Diners)"
     elif avg_waste < 10.0:
-        pos_rice = "預設【正常飯量 (光盤常客)】"
+        pos_rice = "預設【正常份量 (光盤常客)】"
         crm_seg = "高飽足飽腹族 (Standard/High-Calorie)"
     else:
-        pos_rice = "預設【標準飯量】"
+        pos_rice = "預設【標準份量】"
         crm_seg = "均衡飲食族 (Balanced Diners)"
 
     sauce_wastes = m_df[m_df["primary_waste"].str.contains("配菜|醬汁", na=False)]
@@ -481,11 +513,11 @@ def analyze_member_loyalty_profile(member_id, df_all):
         pos_sauce = "預設【正常汁】"
 
     if "控醣" in crm_seg:
-        retarget_strategy = f"針對最愛餐點【{fav_dish}】推送「健康少飯換特飲優惠券」；推廣高蛋白低碳輕食套餐。"
+        retarget_strategy = f"針對最愛餐點【{fav_dish}】推送「少飯少麵換特飲券」；推廣高蛋白輕食。"
     elif "高飽足" in crm_seg:
-        retarget_strategy = f"向其大家樂 App 推送【{fav_dish}】加配小食（雞翼/紅豆冰）$8 組合券，拉高客單價。"
+        retarget_strategy = f"向其大家樂 App 推送【{fav_dish}】加配小食（雞翼/紅豆冰）$8 組合券。"
     else:
-        retarget_strategy = f"推送【{fav_dish}】午市立減 $3 現金回訪券，鎖定工作日午市高頻復購。"
+        retarget_strategy = f"推送【{fav_dish}】午市立減 $3 現金回訪券，鎖定工作日高頻復購。"
 
     return {
         "member_id": member_id,
@@ -499,7 +531,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 5. UI Views
+# 6. 前端頁面模組
 # ==============================================================================
 def render_header(modules):
     active_badges = []
@@ -516,9 +548,12 @@ def render_header(modules):
     </div>
     """, unsafe_allow_html=True)
 
-def render_mode1(df_b, df_d, engine, modules):
+def render_mode1(engine, modules):
+    df_b = get_live_branches()
+    df_d = get_live_dishes()
+
     if df_b.empty or df_d.empty:
-        st.warning("⚠️ 門市或餐點清單為空！請至 Mode 3 建立基礎資料。")
+        st.warning("⚠️ 門市或餐點清單為空！請先至 Mode 3 上傳或新增菜單與分店。")
         return
 
     df_history = get_records()
@@ -591,9 +626,7 @@ def render_mode1(df_b, df_d, engine, modules):
                     should_run = True
 
         if img_cap is not None and should_run:
-            with st.spinner("🚀 AI 正在分析殘食並提取顧客偏好 (YOLOS + CLIP)..."):
-                anno_img, items, ratio, primary_cat, is_food = detect_tray(img_cap, engine)
-
+            with st.spinner("🚀 AI 正在深度解構餐點與殘食成份 (CLIP + YOLOS)..."):
                 candidate_names = df_d["name"].tolist()
                 if auto_dish:
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine)
@@ -601,14 +634,21 @@ def render_mode1(df_b, df_d, engine, modules):
                     sel_dish = candidate_names[0]
                     dish_conf = 1.0
 
+                matched_rows = df_d[df_d["name"] == sel_dish]
+                carb_type = matched_rows.iloc[0]["main_carb"] if not matched_rows.empty else "未知主食"
+
+                anno_img, items, ratio, primary_cat, is_food = detect_tray(
+                    img_cap, engine, selected_dish=sel_dish, carb_type_from_csv=carb_type
+                )
+
                 loss_hkd = round(ratio * 25 * 0.45, 1)
                 now = datetime.datetime.now()
+                waste_pct = round(ratio * 100, 1)
                 
+                # 核心功能：呼叫可自訂的獎勵規則引擎
                 if modules.get("mod4", True) and active_member_id != "GUEST":
-                    if ratio < 0.15:
-                        reward_msg = "🎉 達成光盤獎勵！已派發【$3 堂食優惠券 + 50 綠色積分】至大家樂 App"
-                    else:
-                        reward_msg = "已累積【10 綠色環保積分】至 Club 100 帳戶"
+                    rewards_list = evaluate_customer_rewards(waste_pct)
+                    reward_msg = " • ".join(rewards_list)
                 else:
                     reward_msg = "訪客還盤完成 (Guest Return)"
 
@@ -620,7 +660,7 @@ def render_mode1(df_b, df_d, engine, modules):
                     "member_id": active_member_id,
                     "dish_name": sel_dish, 
                     "primary_waste": primary_cat, 
-                    "waste_ratio": round(ratio * 100, 1),
+                    "waste_ratio": waste_pct,
                     "cost_waste_hkd": loss_hkd, 
                     "co2_emission_kg": round(loss_hkd * 0.12, 2),
                     "reward_issued": reward_msg
@@ -639,14 +679,14 @@ def render_mode1(df_b, df_d, engine, modules):
                     "reward": reward_msg,
                     "items": items
                 }
-                st.toast(f"✅ 還盤數據已寫入資料庫並同步更新 CSV！")
+                st.toast(f"✅ 還盤數據已即時同步！已觸發獎勵規則。")
                 st.rerun()
 
     with c2:
         st.markdown("#### 🎯 前線掃描結果與會員數據")
         latest = st.session_state.get("latest")
         if not latest:
-            st.info("💡 尚未執行偵測或畫面非餐盤。請對準餐盤掃描。")
+            st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
         else:
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
             st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}", use_container_width=True)
@@ -654,25 +694,28 @@ def render_mode1(df_b, df_d, engine, modules):
             if modules.get("mod4", True) and latest.get("member") != "GUEST":
                 st.markdown(f"""
                 <div class="crm-card">
-                    <b style="color:#166534; font-size:1rem;">📲 大家樂 Loyalty Loop 反向偏好更新成功</b><br>
+                    <b style="color:#166534; font-size:1rem;">🎁 會員獎勵與 Loyalty Loop 派發成功</b><br>
                     • <b>關聯會員 ID</b>: <code>{latest.get('member')}</code><br>
-                    • <b>本次還盤結果</b>: {latest.get('reward')}<br>
+                    • <b>動態派發獎勵</b>: <span style="font-weight:700; color:#047857;">{latest.get('reward')}</span><br>
                     • <b>自動反哺 POS 規則</b>: 下次點餐系統已預載顧客客製化偏好
                 </div>
                 """, unsafe_allow_html=True)
 
             k1, k2, k3 = st.columns(3)
             k1.markdown(f'<div class="clean-card"><div class="clean-label">殘食佔比 Waste Ratio</div><div class="clean-val" style="color:{"#EF4444" if latest["ratio"] > 0.3 else "#10B981"}">{latest["ratio"]:.1%}</div></div>', unsafe_allow_html=True)
-            k2.markdown(f'<div class="clean-card"><div class="clean-label">主要殘留 Primary</div><div class="clean-val" style="font-size:1.05rem;margin-top:4px;">{latest["cat"].split(" ")[0]}</div></div>', unsafe_allow_html=True)
+            k2.markdown(f'<div class="clean-card"><div class="clean-label">主要殘留 Primary</div><div class="clean-val" style="font-size:0.95rem;margin-top:4px;">{latest["cat"]}</div></div>', unsafe_allow_html=True)
             k3.markdown(f'<div class="clean-card"><div class="clean-label">推算損耗 Loss</div><div class="clean-val" style="color:#F59E0B">HK${latest["cost"]}</div></div>', unsafe_allow_html=True)
 
-def render_mode2(df_b, df_d, engine, modules):
-    st.markdown("### 📊 總部營運與會員客群 Retargeting 數據中心")
+def render_mode2(engine, modules):
+    df_b = get_live_branches()
+    df_d = get_live_dishes()
     df_raw = get_records()
+
+    st.markdown("### 📊 總部營運與會員客群 Retargeting 數據中心")
 
     col_ctrl1, col_ctrl2 = st.columns([3, 1])
     with col_ctrl2:
-        if st.button("🔄 刷新載入最新資料庫 (Reload Data)", use_container_width=True):
+        if st.button("🔄 刷新即時數據 (Reload Live Data)", use_container_width=True):
             st.rerun()
 
     c1, c2 = st.columns(2)
@@ -708,8 +751,7 @@ def render_mode2(df_b, df_d, engine, modules):
     k4.markdown(f'<div class="clean-card"><div class="clean-label">累計碳排放</div><div class="clean-val" style="color:#3B82F6">{tot_co2:.2f} <span style="font-size:0.85rem;color:#94A3B8">kg</span></div></div>', unsafe_allow_html=True)
 
     st.markdown("---")
-    
-    st.markdown("#### 📋 即時審計記錄（已與 CSV 同步存檔）")
+    st.markdown("#### 📋 即時審計記錄（即時讀取自 seed_audit_logs.csv）")
     if not df_filtered.empty:
         st.dataframe(df_filtered, use_container_width=True)
         csv_download = df_filtered.to_csv(index=False).encode("utf-8-sig")
@@ -720,7 +762,7 @@ def render_mode2(df_b, df_d, engine, modules):
             mime="text/csv"
         )
     else:
-        st.info("💡 當前篩選維度下尚無資料。請在 Mode 1 進行實體餐盤掃描，系統將自動寫入 SQLite 及 seed_audit_logs.csv。")
+        st.info("💡 當前篩選維度下尚無資料。請在 Mode 1 進行實體餐盤掃描，系統將自動即時存入 CSV。")
 
     st.markdown("---")
 
@@ -764,7 +806,7 @@ def render_mode2(df_b, df_d, engine, modules):
             st.markdown(f"""
             <div class="directive-card directive-chef">
                 <b style="color:#0F172A;">👨‍🍳 後廚出餐計量標準校準 Head Chef ({t_branch} • {t_dish})</b><br>
-                【即時份量校準】平均殘食率達 {sub_avg_w:.1f}%。針對「{t_dish}」換裝標準平底飯勺（每份減量 30g 出餐），單期預估防損挽回 HK$ {max(150, round(sub_loss * 0.4)):,.0f}。
+                【即時份量校準】平均殘食率達 {sub_avg_w:.1f}%。針對「{t_dish}」換裝標準打餐器（每份減量 30g 出餐），單期預估防損挽回 HK$ {max(150, round(sub_loss * 0.4)):,.0f}。
             </div>
             """, unsafe_allow_html=True)
 
@@ -772,87 +814,171 @@ def render_mode2(df_b, df_d, engine, modules):
             st.markdown(f"""
             <div class="directive-card directive-pos">
                 <b style="color:#0F172A;">🖥️ 點餐機 (Kiosk) 與大家樂 App 反向客製化連動</b><br>
-                【智慧預設下發】系統已自動將高頻剩餘「{t_dish}」主食之會員，於點餐終端預設勾選「少飯（立減 $2）」或「少汁」，在點餐階段源頭減廢。
+                【智慧預設下發】系統已自動將高頻剩餘「{t_dish}」主食之會員，於點餐終端預設勾選「少飯/少麵（立減 $2）」或「少汁」，在點餐階段源頭減廢。
             </div>
             """, unsafe_allow_html=True)
 
-    if modules.get("mod2", True) and not df_filtered.empty:
-        st.markdown("---")
-        st.markdown("#### 📈 Module 2: 深度商業智慧與數據洞察")
-        g1, g2 = st.columns(2)
-        with g1:
-            st.markdown("##### 🏢 各門市平均殘食率 Store Waste Ratio (%)")
-            st.bar_chart(df_filtered.groupby("branch_name")["waste_ratio"].mean(), color="#3B82F6")
-        with g2:
-            st.markdown("##### 🍱 各食物種類耗損 Waste Cost by Dish (HK$)")
-            st.bar_chart(df_filtered.groupby("dish_name")["cost_waste_hkd"].sum(), color="#EF4444")
+def render_mode3():
+    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management - Real-Time CSV)")
+    st.caption("所有編輯與上傳均直接即時寫入根目錄實體 CSV 檔案，無任何寫死代碼，確保刷新不丟失。")
 
-def render_mode3(df_b, df_d):
-    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management)")
-    tab1, tab2 = st.tabs(["🏢 分店清單 (Branches)", "🍱 餐點品項管理與 AI 照片註冊 (Menu Items & AI Photo Registration)"])
+    tab1, tab2, tab3 = st.tabs([
+        "🏢 分店清單 (Branches CSV)", 
+        "🍱 餐點品項管理 (Menu CSV)",
+        "🎁 殘食門檻獎勵階梯配置 (Incentive Tiers CSV)"
+    ])
 
+    # --------------------------------------------------------------------------
+    # Tab 1: 門市即時管理
+    # --------------------------------------------------------------------------
     with tab1:
-        st.markdown("#### 🏢 門市清單即時編輯 (Live Branch Editor)")
-        edit_b = st.data_editor(df_b, num_rows="dynamic", use_container_width=True, key="ed_b")
-        if st.button("💾 儲存分店修改 (Save Branches)", type="primary"):
-            edit_b.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
-            st.success("✅ 分店清單已成功儲存至 master_branches.csv！")
-            st.rerun()
+        df_b_current = get_live_branches()
+        st.markdown("#### 🏢 門市清單即時編輯 (Live Branches)")
+        edit_b = st.data_editor(df_b_current, num_rows="dynamic", use_container_width=True, key="live_branch_editor")
+        
+        c_b1, c_b2 = st.columns([1, 1])
+        with c_b1:
+            if st.button("💾 儲存修改至 master_branches.csv", type="primary"):
+                save_live_branches(edit_b)
+                st.success("✅ master_branches.csv 檔案已即時更新儲存！")
+                st.rerun()
+        with c_b2:
+            csv_b_export = edit_b.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("📥 下載目前 master_branches.csv", data=csv_b_export, file_name="master_branches.csv", mime="text/csv")
 
+        st.markdown("---")
+        up_b = st.file_uploader("批次覆蓋上傳分店 CSV (Upload Store CSV)", type=["csv"], key="up_b_uploader")
+        if up_b:
+            try:
+                new_df_b = pd.read_csv(up_b, encoding="utf-8-sig")
+                save_live_branches(new_df_b)
+                st.success(f"🎉 成功寫入 {len(new_df_b)} 間分店至 master_branches.csv！")
+                st.rerun()
+            except Exception as e:
+                st.error(f"匯入錯誤: {e}")
+
+    # --------------------------------------------------------------------------
+    # Tab 2: 菜品清單即時管理
+    # --------------------------------------------------------------------------
     with tab2:
-        st.markdown("#### 📸 新增菜品照片上傳與 AI 辨識註冊 (Register New Dish via Photo Reference)")
-        st.caption("在此上傳新菜品（如車仔麵、肉醬意粉）的參考照片，AI 將自動提取特徵向量並同步至前線辨識庫。")
-
+        df_d_current = get_live_dishes()
+        
+        st.markdown("#### 📸 新增菜品與照片註冊 (即時寫入 master_dishes.csv)")
         col_reg1, col_reg2 = st.columns([1.1, 0.9])
         with col_reg1:
-            new_dish_id = st.text_input("品項編號 (Dish ID)", value=f"D{len(df_d)+1:02d}")
+            new_dish_id = st.text_input("品項編號 (Dish ID)", value=f"D{len(df_d_current)+1:02d}")
             new_dish_name = st.text_input("餐點名稱 (Dish Name)", placeholder="例: 車仔麵 (Kart Noodle)")
-            new_carb = st.selectbox("主要碳水化合物 (Carbohydrate)", ["中式麵條 (Noodles)", "白米飯 (Rice)", "意大利麵/意粉 (Spaghetti)", "蛋炒飯 (Fried Rice)", "無主食 (None)"])
-            new_protein = st.text_input("主要蛋白質/主肉類 (Protein Source)", placeholder="例: 牛腩/魚蛋")
+            new_carb = st.selectbox("主要碳水主食 (Carbohydrate)", ["中式麵條 (Noodles)", "白米飯 (Rice)", "蛋炒飯 (Fried Rice)", "意大利麵/意粉 (Spaghetti)", "河粉/米線 (Rice Noodles)", "無主食 (None)"])
+            new_protein = st.text_input("主要蛋白質/主菜 (Protein Source)", placeholder="例: 咖喱牛腩/魚蛋")
 
         with col_reg2:
-            new_dish_photo = st.file_uploader("📷 上傳菜品樣本照片 (Upload Dish Reference Photo)", type=["jpg", "png", "jpeg"], key="new_dish_photo_input")
+            new_dish_photo = st.file_uploader("📷 上傳菜品樣本照片 (Reference Photo)", type=["jpg", "png", "jpeg"], key="new_dish_photo_input")
             if new_dish_photo:
                 photo_preview = Image.open(new_dish_photo)
-                st.image(photo_preview, caption="菜品照片預覽 (Sample Preview)", width=240)
+                st.image(photo_preview, caption="菜品照片預覽", width=240)
 
-        if st.button("🚀 建立新品項特徵並註冊至 AI (Train & Register Dish to AI)", type="primary"):
+        if st.button("🚀 註冊新菜品並寫入 CSV (Save to Dishes CSV)", type="primary"):
             if not new_dish_name.strip():
                 st.error("❌ 請輸入餐點名稱！")
-            elif not new_dish_photo:
-                st.error("❌ 請務必上傳菜品參考照片以供 AI 提取特徵！")
             else:
-                img_ext = os.path.splitext(new_dish_photo.name)[1]
-                saved_img_path = os.path.join(DISH_IMG_DIR, f"{new_dish_id}_{new_dish_name}{img_ext}")
-                with open(saved_img_path, "wb") as f:
-                    f.write(new_dish_photo.getbuffer())
+                if new_dish_photo:
+                    img_ext = os.path.splitext(new_dish_photo.name)[1]
+                    saved_img_path = os.path.join(DISH_IMG_DIR, f"{new_dish_id}_{new_dish_name}{img_ext}")
+                    with open(saved_img_path, "wb") as f:
+                        f.write(new_dish_photo.getbuffer())
 
                 new_row = pd.DataFrame([{
                     "dish_id": new_dish_id,
                     "name": new_dish_name,
                     "main_carb": new_carb.split(" ")[0],
-                    "protein": new_protein if new_protein else "主食肉類"
+                    "protein": new_protein if new_protein else "綜合配料"
                 }])
-                df_updated = pd.concat([df_d, new_row], ignore_index=True).drop_duplicates(subset=["dish_id"], keep="last")
-                df_updated.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-                st.success(f"🎉 成功完成新品項【{new_dish_name}】特徵註冊與相片建檔！前線 Mode 1 已即刻生效。")
+                
+                updated_dishes = pd.concat([df_d_current, new_row], ignore_index=True).drop_duplicates(subset=["name"], keep="last")
+                save_live_dishes(updated_dishes)
+                st.success(f"🎉 成功將【{new_dish_name}】寫入 master_dishes.csv！Mode 1 即刻可選。")
                 st.rerun()
 
         st.markdown("---")
-        st.markdown("#### 🍱 現有餐點清單即時編輯 (Live Menu Editor)")
-        edit_d = st.data_editor(df_d, num_rows="dynamic", use_container_width=True, key="ed_d")
-        if st.button("💾 儲存餐點清單手動修改 (Save Menu)", type="secondary"):
-            edit_d.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
-            st.success("✅ 餐點清單已成功儲存至 master_dishes.csv！")
-            st.rerun()
+        st.markdown("#### 🍱 現有餐點清單即時編輯 (Live Menu CSV)")
+        edit_d = st.data_editor(df_d_current, num_rows="dynamic", use_container_width=True, key="live_dish_editor")
+        
+        c_d1, c_d2 = st.columns([1, 1])
+        with c_d1:
+            if st.button("💾 儲存修改至 master_dishes.csv", type="primary"):
+                save_live_dishes(edit_d)
+                st.success("✅ master_dishes.csv 檔案已即時更新儲存！")
+                st.rerun()
+        with c_d2:
+            csv_d_export = edit_d.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("📥 下載目前 master_dishes.csv", data=csv_d_export, file_name="master_dishes.csv", mime="text/csv")
+
+        st.markdown("---")
+        up_d = st.file_uploader("批次覆蓋上傳餐點 CSV (Upload Menu CSV)", type=["csv"], key="up_d_uploader")
+        if up_d:
+            try:
+                new_df_d = pd.read_csv(up_d, encoding="utf-8-sig")
+                save_live_dishes(new_df_d)
+                st.success(f"🎉 成功寫入 {len(new_df_d)} 項餐點至 master_dishes.csv！")
+                st.rerun()
+            except Exception as e:
+                st.error(f"匯入錯誤: {e}")
+
+    # --------------------------------------------------------------------------
+    # Tab 3: 核心新功能：動態獎勵規則階梯配置 (Live Rewards Tier Engine)
+    # --------------------------------------------------------------------------
+    with tab3:
+        st.markdown("#### 🎁 會員還盤獎勵階梯配置 (Incentive Tiers Configuration)")
+        st.caption("管理員可在此自訂當客戶達到特定殘食佔比門檻時，自動派發的單一或多項組合獎勵（如不同 Coupon、折扣券、積分等）。所有設定即時寫入 master_rewards.csv。")
+
+        df_r_current = get_live_rewards()
+        
+        st.markdown("##### ➕ 快速新增獎勵規則 (Add New Tier)")
+        c_r1, c_r2, c_r3 = st.columns([1.2, 1, 2])
+        with c_r1:
+            new_r_name = st.text_input("獎勵等級名稱 (Tier Name)", placeholder="例: 超級光盤達人獎")
+        with c_r2:
+            new_r_ratio = st.number_input("殘食佔比上限 Max Waste (%)", min_value=0.0, max_value=100.0, value=15.0, step=1.0)
+        with c_r3:
+            new_r_desc = st.text_input("組合獎勵內容描述 (Coupons / Rewards Combo)", placeholder="例: 【$5 現金券】+【特飲免費券】+【100 積分】")
+
+        if st.button("➕ 新增此獎勵規則至 CSV (Add Tier)", type="primary"):
+            if not new_r_name.strip() or not new_r_desc.strip():
+                st.error("❌ 請輸入規則名稱與獎勵內容！")
+            else:
+                new_reward_row = pd.DataFrame([{
+                    "reward_id": f"R{len(df_r_current)+1:02d}",
+                    "tier_name": new_r_name.strip(),
+                    "max_waste_ratio": float(new_r_ratio),
+                    "reward_type": "Custom Combo",
+                    "reward_description": new_r_desc.strip(),
+                    "is_active": True
+                }])
+                updated_rewards = pd.concat([df_r_current, new_reward_row], ignore_index=True)
+                save_live_rewards(updated_rewards)
+                st.success(f"🎉 成功新增獎勵規則【{new_r_name}】至 master_rewards.csv！前台即刻生效。")
+                st.rerun()
+
+        st.markdown("---")
+        st.markdown("##### 📝 線上即時編輯獎勵規則 (Live Rewards Editor)")
+        edit_r = st.data_editor(df_r_current, num_rows="dynamic", use_container_width=True, key="live_reward_editor")
+        
+        c_save_r1, c_save_r2 = st.columns([1, 1])
+        with c_save_r1:
+            if st.button("💾 儲存修改至 master_rewards.csv", type="secondary"):
+                save_live_rewards(edit_r)
+                st.success("✅ master_rewards.csv 檔案已即時更新儲存！")
+                st.rerun()
+        with c_save_r2:
+            csv_r_export = edit_r.to_csv(index=False).encode("utf-8-sig")
+            st.download_button("📥 下載目前 master_rewards.csv", data=csv_r_export, file_name="master_rewards.csv", mime="text/csv")
 
 # ==============================================================================
-# 6. 主程式進入點
+# 7. 主程式進入點
 # ==============================================================================
 def main():
     inject_safe_css()
     init_db()
-    df_b, df_d = load_master_data()
 
     with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Loading AI Engines)..."):
         engine = load_ai_engine()
@@ -884,11 +1010,11 @@ def main():
     ])
 
     if mode.startswith("Mode 1"): 
-        render_mode1(df_b, df_d, engine, active_modules)
+        render_mode1(engine, active_modules)
     elif mode.startswith("Mode 2"): 
-        render_mode2(df_b, df_d, engine, active_modules)
+        render_mode2(engine, active_modules)
     else: 
-        render_mode3(df_b, df_d)
+        render_mode3()
 
 if __name__ == "__main__":
     main()

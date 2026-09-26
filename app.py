@@ -18,7 +18,7 @@ from transformers import (
 # 0. Primary Streamlit Execution Configuration
 # ==============================================================================
 st.set_page_config(
-    page_title="TrayZero+ | 大家樂智能餐盤審計與會員閉環平台", 
+    page_title="TrayZero+ | 智能餐盤審計與會員獎勵系統", 
     page_icon="🍽️", 
     layout="wide",
     initial_sidebar_state="expanded"
@@ -47,10 +47,10 @@ CONTAINER_AND_BEVERAGE_BLOCKLIST = {
 def inject_safe_css():
     st.markdown("""
     <style>
-        /* 根色彩變數 - Option B: Fast-Casual POS 商業點餐機高對比風格 */
         :root {
             --cdc-red: #DC2626 !important;
             --cdc-amber: #D97706 !important;
+            --cdc-logo-gold: #EAA424 !important;
             --cdc-amber-light: #FFFBEB !important;
             --cdc-dark: #0F172A !important;
             --text-color: #0F172A !important;
@@ -70,68 +70,40 @@ def inject_safe_css():
             color: #0F172A !important;
         }
 
-        /* 頂部 POS 風格企業橫幅 (取代圖片，純文字品牌渲染) */
+        /* 頂部 Box 改為大家樂 Logo 金黃色系 */
         .pos-header-banner {
-            background: #FFFFFF !important;
+            background: linear-gradient(135deg, #FFFDF5 0%, #FEF9E7 100%) !important;
             border-radius: 12px;
-            padding: 16px 22px;
+            padding: 18px 24px;
             margin-bottom: 20px;
-            border: 1px solid #E2E8F0;
-            border-left: 8px solid #D97706 !important;
-            box-shadow: 0 4px 12px rgba(217, 119, 6, 0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            border: 1.5px solid #FDE68A;
+            border-left: 8px solid #EAA424 !important;
+            box-shadow: 0 4px 14px rgba(234, 164, 36, 0.12);
         }
         .pos-header-title {
-            color: #0F172A !important;
-            font-size: 1.35rem !important;
+            color: #78350F !important;
+            font-size: 1.45rem !important;
             font-weight: 900 !important;
             margin: 0 !important;
-            letter-spacing: -0.02em;
-        }
-        .pos-header-sub {
-            color: #64748B !important;
-            font-size: 0.82rem !important;
-            font-weight: 700 !important;
-            margin-top: 4px;
-        }
-        .shift-badge {
-            background: #FEF3C7 !important;
-            border: 1.5px solid #FDE68A !important;
-            color: #B45309 !important;
-            padding: 6px 14px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 900;
+            letter-spacing: -0.01em;
         }
 
-        /* 側邊欄 POS 樣式 */
+        /* 側邊欄樣式 */
         [data-testid="stSidebar"] {
             background-color: #FFFFFF !important;
             border-right: 1.5px solid #E2E8F0 !important;
             padding-top: 1rem !important;
         }
-        .sidebar-brand-box {
-            background: linear-gradient(135deg, #DC2626 0%, #D97706 100%) !important;
-            border-radius: 12px;
-            padding: 16px 14px;
-            text-align: center;
-            color: #FFFFFF !important;
-            margin-bottom: 18px;
-            box-shadow: 0 4px 10px rgba(220, 38, 38, 0.15);
+        [data-testid="stSidebar"] [data-testid="stImage"] {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin: 0 auto 16px auto !important;
         }
-        .sidebar-brand-title {
-            font-size: 1.15rem !important;
-            font-weight: 900 !important;
-            letter-spacing: 0.05em;
-            color: #FFFFFF !important;
-            margin-bottom: 2px;
-        }
-        .sidebar-brand-sub {
-            font-size: 0.72rem !important;
-            font-weight: 700 !important;
-            color: #FEF08A !important;
+        [data-testid="stSidebar"] [data-testid="stImage"] img {
+            margin: 0 auto !important;
+            display: block !important;
+            max-width: 175px !important;
         }
 
         /* 元件 Label 強制深黑高對比 */
@@ -173,7 +145,7 @@ def inject_safe_css():
             visibility: visible !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] {
-            border-bottom: 3px solid #D97706 !important;
+            border-bottom: 3px solid #EAA424 !important;
         }
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] p,
         div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] span {
@@ -213,7 +185,7 @@ def inject_safe_css():
             margin-bottom: 4px;
         }
         .pos-coupon-value {
-            font-size: 1.25rem;
+            font-size: 1.22rem;
             font-weight: 900;
             color: #0F172A;
             margin-bottom: 4px;
@@ -505,8 +477,8 @@ def get_records():
     with db_conn() as conn: 
         df = pd.read_sql("SELECT * FROM audit_logs ORDER BY id DESC", conn)
         if not df.empty:
-            if "member_id" not in df.columns: df["member_id"] = "GUEST"
-            df["member_id"] = df["member_id"].fillna("GUEST")
+            if "member_id" not in df.columns: df["member_id"] = "STAFF"
+            df["member_id"] = df["member_id"].fillna("STAFF")
         return df
 
 # ==============================================================================
@@ -660,7 +632,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
 # 5. Member Profile Synthesis (Loyalty Engine)
 # ==============================================================================
 def analyze_member_loyalty_profile(member_id, df_all):
-    if not member_id or member_id == "GUEST" or df_all.empty:
+    if not member_id or member_id == "STAFF" or df_all.empty:
         return None
     
     m_df = df_all[df_all["member_id"] == member_id]
@@ -723,21 +695,13 @@ def analyze_member_loyalty_profile(member_id, df_all):
 # ==============================================================================
 # 6. Mode Renderers (Fast-Casual POS Layout)
 # ==============================================================================
-def render_header(modules):
-    active_badges = []
-    if modules.get("mod1", True): active_badges.append("M1 營運監控")
-    if modules.get("mod2", True): active_badges.append("M2 數據洞察")
-    if modules.get("mod3", True): active_badges.append("M3 點餐機反哺")
-    if modules.get("mod4", True): active_badges.append("M4 Club 100")
-    badge_str = " • ".join(active_badges) if active_badges else "未啟用任何模組"
-
-    st.markdown(f"""
+def render_header():
+    # 核心修復 5 & 8: 標題改為「🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統」，Box 改為金黃 Logo 色系，移除副標題與尖峰標籤
+    st.markdown("""
     <div class="pos-header-banner">
         <div>
-            <div class="pos-header-title">大家的大家樂 🍽️ TrayZero+ 智能餐盤審計與會員閉環系統</div>
-            <div class="pos-header-sub">大家樂集團 IT PMO 聯合開發 • 雙向鏡像保護 (CSV + SQLite) • 已授權模組: {badge_str}</div>
+            <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統</div>
         </div>
-        <div class="shift-badge">🔥 午市尖峰運作中</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -756,25 +720,20 @@ def render_mode1(engine, modules):
         st.markdown("#### 🏢 會員識別與還盤掃描 (Member Scan & Ingest)")
         b_name = st.selectbox("執勤門市 (Active Store Location)", df_b["name"].tolist())
         
-        active_member_id = "GUEST"
+        # 核心修復 6: 不用 Tick 是否會員，有輸入就是會員卡號，沒輸入就是「員工」
+        active_member_id = "STAFF"
         if modules.get("mod4", True):
             st.markdown("##### 📲 大家樂 Club 100 會員識別 (Member Scanner)")
-            member_col1, member_col2 = st.columns([3, 1])
-            with member_col1:
-                raw_member_id = st.text_input(
-                    "掃描或輸入會員卡號 / 手機號碼", 
-                    value=st.session_state.get("last_input_member", ""),
-                    placeholder="例: 001 / C100-8801 / 手機號碼"
-                )
-            with member_col2:
-                st.write("")
-                st.write("")
-                is_guest = st.checkbox("👤 訪客還盤", value=False)
+            raw_member_id = st.text_input(
+                "掃描或輸入會員卡號 / 手機號碼 (未輸入則系統預設為員工還盤)", 
+                value=st.session_state.get("last_input_member", ""),
+                placeholder="例: 001 / C100-8801 / 手機號碼 (若為員工還盤請留空)"
+            )
             
-            active_member_id = "GUEST" if is_guest or not raw_member_id.strip() else raw_member_id.strip()
+            active_member_id = raw_member_id.strip() if raw_member_id.strip() else "STAFF"
             st.session_state["last_input_member"] = raw_member_id
 
-            if active_member_id != "GUEST":
+            if active_member_id != "STAFF":
                 prof = analyze_member_loyalty_profile(active_member_id, df_history)
                 if prof:
                     st.markdown(f"""
@@ -784,6 +743,8 @@ def render_mode1(engine, modules):
                         <span style="font-size:0.84rem; color:#D97706; font-weight:800;">🎯 點餐機 (Kiosk) 自動預載: {prof['pos_default_rice']} • {prof['pos_default_sauce']}</span>
                     </div>
                     """, unsafe_allow_html=True)
+            else:
+                st.caption("ℹ️ 目前狀態：【員工還盤 (STAFF)】（未輸入會員卡號）")
 
         auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Auto Dish Recognition via CLIP)", value=True)
         scan_mode = st.radio(
@@ -838,11 +799,11 @@ def render_mode1(engine, modules):
                 now = datetime.datetime.now()
                 waste_pct = round(ratio * 100, 1)
                 
-                if modules.get("mod4", True) and active_member_id != "GUEST":
+                if modules.get("mod4", True) and active_member_id != "STAFF":
                     rewards_list = evaluate_customer_rewards(waste_pct)
                     reward_msg = " • ".join(rewards_list)
                 else:
-                    reward_msg = "訪客還盤完成 (Guest Return)"
+                    reward_msg = "員工還盤完成 (Staff Return - 僅記錄數據)"
 
                 save_record({
                     "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
@@ -871,11 +832,12 @@ def render_mode1(engine, modules):
                     "reward": reward_msg,
                     "items": items
                 }
-                st.toast(f"✅ 還盤數據已即時同步！已觸發獎勵規則。")
+                st.toast(f"✅ 還盤數據已即時同步！")
                 st.rerun()
 
     with c2:
-        st.markdown("#### 🎯 即時審計結果與激勵派發 (Live Ticket)")
+        # 核心修復 7: 標題改為「🎯 即時判斷結果與獎勵(Live Ticket)」
+        st.markdown("#### 🎯 即時判斷結果與獎勵(Live Ticket)")
         latest = st.session_state.get("latest")
         if not latest:
             st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
@@ -883,14 +845,20 @@ def render_mode1(engine, modules):
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
             st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
             
-            # Option B: 實體電子卡券卡 (Digital Coupon Voucher Display)
-            if modules.get("mod4", True) and latest.get("member") != "GUEST":
+            # 電子卡券顯示
+            if modules.get("mod4", True) and latest.get("member") != "STAFF":
                 st.markdown(f"""
                 <div class="pos-coupon-card">
                     <div class="pos-coupon-header">🎟️ 大家樂 CLUB 100 電子現金券 (即時入帳)</div>
                     <div class="pos-coupon-value">{latest.get('reward').split('：')[-1] if '：' in latest.get('reward') else latest.get('reward')}</div>
                     <div class="pos-coupon-desc">• 關聯會員卡號: <code>{latest.get('member')}</code>  |  • 達成狀態: 惜食獎勵門檻達標</div>
                     <div class="pos-coupon-badge">已派送至手機大家樂錢包 (App Push Sent)</div>
+                </div>
+                """, unsafe_allow_html=True)
+            elif latest.get("member") == "STAFF":
+                st.markdown("""
+                <div style="background:#F1F5F9; border:1px solid #CBD5E1; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:0.85rem; color:#475569; font-weight:700;">
+                    👤 員工還盤記錄完成 (不派發個人會員券)
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1000,7 +968,7 @@ def render_mode2(engine, modules):
 
     if modules.get("mod4", True) and not df_raw.empty:
         st.markdown("#### 🎯 大家樂會員偏好與 Retargeting 數據中心")
-        unique_members = [m for m in df_raw["member_id"].dropna().unique().tolist() if m != "GUEST"]
+        unique_members = [m for m in df_raw["member_id"].dropna().unique().tolist() if m != "STAFF"]
         
         if unique_members:
             crm_records = []
@@ -1207,20 +1175,16 @@ def main():
     with st.spinner("🚀 正在啟動雙核心 AI 引擎 (Loading AI Engines)..."):
         engine = load_ai_engine()
 
-    # 側邊欄：純文字企業品牌橫幅 (無須依賴圖片，支援純文字精緻渲染)
-    st.sidebar.markdown("""
-    <div class="sidebar-brand-box">
-        <div class="sidebar-brand-title">大家樂 CAFÉ DE CORAL</div>
-        <div class="sidebar-brand-sub">TrayZero+ 前線餐盤智能回收終端</div>
-    </div>
-    """, unsafe_allow_html=True)
+    # 核心修復 1: 側邊欄頂部換回 Client Logo 圖片 (從專案根目錄載入 CDC_810)
+    logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
+    if logo_target:
+        st.sidebar.image(logo_target, width=175)
 
-    # 門市當前狀態小卡
+    # 核心修復 3: 移除「● 審計連線正常 (Sync 100%)」
     st.sidebar.markdown("""
     <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:10px 14px; margin-bottom:16px;">
         <div style="font-size:0.75rem; font-weight:800; color:#92400E;">現正執勤門市 (STORE)</div>
         <div style="font-size:0.95rem; font-weight:900; color:#78350F; margin-top:2px;">中環威靈頓街店</div>
-        <div style="font-size:0.75rem; font-weight:700; color:#B45309; margin-top:2px;">● 審計連線正常 (Sync 100%)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1245,7 +1209,8 @@ def main():
         "mod4": mod_4
     }
 
-    render_header(active_modules)
+    # 核心修復 2, 4, 5, 8: 渲染更新後的簡潔標題橫幅
+    render_header()
 
     if mode.startswith("Mode 1"): 
         render_mode1(engine, active_modules)

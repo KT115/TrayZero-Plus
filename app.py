@@ -670,6 +670,24 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     draw = ImageDraw.Draw(img_draw)
     items = []
     
+    # 1. 檢查是否為「全新未動 / 完整盒裝餐點」（如焗豬扒飯、焗意粉等鋁箔盒）
+    unopened_container_labels = [
+        "a full intact baked rice or spaghetti in a foil container before eating",
+        "a brand new untouched meal in a container",
+        "a completely finished empty bowl with no food left"
+    ]
+    container_res = engine["clip"](image, candidate_labels=unopened_container_labels)
+    top_container_pred = container_res[0]["label"]
+    
+    # 如果判定為全新未動的完整餐點，殘食率應為 100%（即未食用），或在審計系統中標註為「全新未回收/未食用」
+    if "full intact baked rice" in top_container_pred or "untouched meal" in top_container_pred:
+        return img_draw, [{
+            "分類項目 Category": "完整未動餐點 Intact Meal", 
+            "置信度 Confidence": f"{container_res[0]['score']:.1%}", 
+            "佔比 Coverage": "100.0%"
+        }], 1.0, "完整未動餐點 (未食用)", True
+
+    # 2. 標準殘食量級評估
     waste_level_labels = [
         "a bowl or plate with a lot of leftover food, noodles, vegetables and meat",
         "a bowl with half portion of leftover food",
@@ -757,81 +775,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         ratio = 0.22
 
     return img_draw, items, ratio, primary, True
-
-def auto_detect_dish_clip(image, candidate_dishes, engine):
-    if not candidate_dishes:
-        return "未定義餐點", 0.0
-    clean_labels = [d.strip() for d in candidate_dishes]
-    try:
-        results = engine["clip"](image, candidate_labels=clean_labels)
-        return results[0]["label"], results[0]["score"]
-    except Exception:
-        return candidate_dishes[0], 0.75
-
-# ==============================================================================
-# 6. Member Profile Synthesis (Loyalty Engine)
-# ==============================================================================
-def analyze_member_loyalty_profile(member_id, df_all):
-    if not member_id or member_id == "STAFF" or df_all.empty:
-        return None
-    
-    m_df = df_all[df_all["member_id"] == member_id]
-    if m_df.empty:
-        return {
-            "member_id": member_id,
-            "total_visits": 0,
-            "avg_waste": 0.0,
-            "favorite_dish": "尚無資料",
-            "pos_default_rice": "正常份量",
-            "pos_default_sauce": "正常汁",
-            "retarget_strategy": "發送迎新 $5 折扣券吸引二訪",
-            "crm_segment": "新註冊會員 (New Sign-up)"
-        }
-    
-    total_visits = len(m_df)
-    avg_waste = m_df["waste_ratio"].mean()
-    
-    dish_stats = m_df.groupby("dish_name").agg(
-        count=("waste_ratio", "count"),
-        clean_waste=("waste_ratio", "mean")
-    ).reset_index()
-    fav_dish = dish_stats.sort_values(by=["count", "clean_waste"], ascending=[False, True]).iloc[0]["dish_name"]
-    
-    carb_wastes = m_df[m_df["primary_waste"].str.contains("主食", na=False)]
-    if not carb_wastes.empty and carb_wastes["waste_ratio"].mean() > 20.0:
-        pos_rice = "預設【少飯/少麵 (-30g / 立減 $2)】"
-        crm_seg = "控醣輕食族 (Low-Carb Diners)"
-    elif avg_waste < 10.0:
-        pos_rice = "預設【正常份量 (光盤常客)】"
-        crm_seg = "高飽足飽腹族 (Standard/High-Calorie)"
-    else:
-        pos_rice = "預設【標準份量】"
-        crm_seg = "均衡飲食族 (Balanced Diners)"
-
-    sauce_wastes = m_df[m_df["primary_waste"].str.contains("配菜|醬汁|湯汁", na=False)]
-    if not sauce_wastes.empty and sauce_wastes["waste_ratio"].mean() > 25.0:
-        pos_sauce = "預設【少汁 / 醬汁另上】"
-    else:
-        pos_sauce = "預設【正常汁】"
-
-    if "控醣" in crm_seg:
-        retarget_strategy = f"針對最愛餐點【{fav_dish}】推送「少飯少麵換特飲券」；推廣高蛋白輕食。"
-    elif "高飽足" in crm_seg:
-        retarget_strategy = f"向其大家樂 App 推送【{fav_dish}】加配小食（雞翼/紅豆冰）$8 組合券。"
-    else:
-        retarget_strategy = f"推送【{fav_dish}】午市立減 $3 現金回訪券，鎖定工作日高頻復購。"
-
-    return {
-        "member_id": member_id,
-        "total_visits": total_visits,
-        "avg_waste": avg_waste,
-        "favorite_dish": fav_dish,
-        "pos_default_rice": pos_rice,
-        "pos_default_sauce": pos_sauce,
-        "retarget_strategy": retarget_strategy,
-        "crm_segment": crm_seg
-    }
-
 # ==============================================================================
 # 7. Mode Renderers
 # ==============================================================================

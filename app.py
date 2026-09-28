@@ -622,7 +622,7 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Multi-Modal Vision Engine (CLIP 語義評估 + YOLOS 空間排除 + 鋁箔盒保護)
+# 5. Multi-Modal Vision Engine (CLIP 語義評估 + YOLOS 空間排除 + 完整未動餐點判定修復)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -670,21 +670,22 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     draw = ImageDraw.Draw(img_draw)
     items = []
     
-    # 1. 檢查是否為「全新未動 / 完整盒裝餐點」（如鋁箔盒焗意粉、焗豬扒飯）
+    # 1. 檢查是否為「全新未動 / 完整未食用餐點」
     unopened_container_labels = [
         "a full intact baked rice or spaghetti in a foil container before eating",
-        "a brand new untouched meal in a container",
+        "a brand new untouched meal on a plate",
         "a completely finished empty bowl with no food left"
     ]
     container_res = engine["clip"](image, candidate_labels=unopened_container_labels)
     top_container_pred = container_res[0]["label"]
     
+    # 【核心修復】若為完整未動餐點，殘食率應設定為 1.0 (100% 未食用/浪費)
     if "full intact baked rice" in top_container_pred or "untouched meal" in top_container_pred:
         return img_draw, [{
-            "分類項目 Category": "完整未動餐點 Intact Meal", 
+            "分類項目 Category": "完整未動餐點 Intact Meal (未食用)", 
             "置信度 Confidence": f"{container_res[0]['score']:.1%}", 
             "佔比 Coverage": "100.0%"
-        }], 0.0, "完整未動餐點 (未食用)", True
+        }], 1.0, "完整未動餐點 (未食用浪費)", True
 
     # 2. 標準殘食量級評估
     waste_level_labels = [

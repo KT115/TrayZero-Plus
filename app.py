@@ -4,16 +4,16 @@ from PIL import Image
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 # ----------------------------------------------------
-# 版面配置與樣式設定
+# 版面配置與樣式設定 (改為寬螢幕 wide)
 # ----------------------------------------------------
 st.set_page_config(
     page_title="TrayZero+ 智慧餐盤殘食審計系統",
     page_icon="🍽️",
-    layout="centered"
+    layout="wide"
 )
 
 st.title("🍽️ TrayZero+ 智慧餐盤殘食審計系統")
-st.markdown("上傳大家的樂回收台餐盤照片，AI 系統將自動進行殘食率迴歸預測、重量換算與會員積分發放！")
+st.markdown("歡迎使用大家樂智慧回收台審計系統。請於左側選取餐點並上傳托盤照片，AI 將自動進行深度審計。")
 st.markdown("---")
 
 # ----------------------------------------------------
@@ -32,82 +32,77 @@ def load_trayzero_model():
     
     return processor, model, device
 
-with st.spinner("🔄 正在初始化 TrayZero+ AI 引擎與載入雲端模型..."):
-    processor, model, device = load_trayzero_model()
-
-st.success("✅ AI 模型載入完畢，系統就緒！")
-
 # ----------------------------------------------------
-# 2. 後端商業邏輯資料庫：菜單與預設總重量 (對應第 2、3 項)
+# 2. 側邊欄控制區 (Sidebar Controls)
 # ----------------------------------------------------
-menu_database = {
-    "大家樂招牌海南雞飯": {"default_weight_g": 450, "carbon_factor": 2.5},
-    "大家樂原塊焗豬扒飯": {"default_weight_g": 500, "carbon_factor": 3.0},
-    "港式燒味雙拼飯": {"default_weight_g": 420, "carbon_factor": 2.8},
-    "粟米肉粒飯": {"default_weight_g": 400, "carbon_factor": 2.0}
-}
-
-selected_dish = st.selectbox(
-    "📝 請選擇本次用餐的餐點類型（用於後端計算實際重量與碳足跡）：", 
-    list(menu_database.keys())
-)
-
-# ----------------------------------------------------
-# 3. 影像上傳與即時推論介面
-# ----------------------------------------------------
-uploaded_file = st.file_uploader("📷 請上傳回收台托盤照片...", type=["jpg", "jpeg", "png"])
-
-if uploaded_file is not None:
-    # 讀取並顯示圖片
-    image = Image.open(uploaded_file).convert("RGB")
-    st.image(image, caption="已上傳的餐盤回收照片", use_container_width=True)
+with st.sidebar:
+    st.header("⚙️ 審計控制台")
     
-    # 執行 AI 模型推論
-    with st.spinner("🤖 AI 正在分析托盤畫面並預測殘食比例..."):
-        # 影像前處理
-        inputs = processor(images=image, return_tensors="pt").to(device)
-        
-        # 進行模型預測 (Regression)
-        with torch.no_grad():
-            outputs = model(**inputs)
-            raw_prediction = outputs.logits.item()
-            
-            # 將數值嚴格限制在 0.0 到 1.0 之間
-            residue_ratio = max(0.0, min(1.0, raw_prediction))
-
-    # ----------------------------------------------------
-    # 4. 計算後端數據（重量、碳足跡、積分獎勵）
-    # ----------------------------------------------------
-    dish_info = menu_database[selected_dish]
-    total_weight = dish_info["default_weight_g"]
+    with st.spinner("🔄 載入 AI 引擎中..."):
+        processor, model, device = load_trayzero_model()
+    st.success("✅ AI 模型就緒")
     
-    # 計算實際剩餘殘食重量 (g)
-    waste_weight_g = total_weight * residue_ratio
-    
-    # 計算碳排放浪費量 (kg CO2)
-    carbon_wasted = (waste_weight_g / 1000.0) * dish_info["carbon_factor"]
-    
-    # 會員環保積分：殘食率愈低，積分愈高 (光盤最高 50 分)
-    points_earned = int((1.0 - residue_ratio) * 50)
-
-    # ----------------------------------------------------
-    # 5. 呈現視覺化審計報告面板
-    # ----------------------------------------------------
     st.markdown("---")
-    st.subheader("📊 TrayZero+ 智慧審計分析報告")
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("AI 預測殘食比例", f"{residue_ratio * 100:.1f}%")
-    col2.metric("估算剩餘殘食重量", f"{waste_weight_g:.1f} g")
-    col3.metric("發放會員環保積分", f"{points_earned} PTS")
+    # 菜單與預設重量資料庫
+    menu_database = {
+        "大家樂招牌海南雞飯": {"default_weight_g": 450, "carbon_factor": 2.5},
+        "大家樂原塊焗豬扒飯": {"default_weight_g": 500, "carbon_factor": 3.0},
+        "港式燒味雙拼飯": {"default_weight_g": 420, "carbon_factor": 2.8},
+        "粟米肉粒飯": {"default_weight_g": 400, "carbon_factor": 2.0}
+    }
+
+    selected_dish = st.selectbox(
+        "📝 選擇餐點類型：", 
+        list(menu_database.keys())
+    )
     
-    # 視覺化進度條
-    st.progress(residue_ratio, text=f"殘食佔比進度條: {residue_ratio * 100:.1f}%")
+    st.markdown("---")
+    uploaded_file = st.file_uploader("📷 上傳回收托盤照片", type=["jpg", "jpeg", "png"])
+
+# ----------------------------------------------------
+# 3. 主畫面：影像展示與審計分析報告
+# ----------------------------------------------------
+if uploaded_file is not None:
+    # 採用雙欄左右對稱排版 (左邊看圖，右邊看數據)
+    col_left, col_right = st.columns([1, 1], gap="large")
     
-    # 根據殘食比例給予動態反饋
-    if residue_ratio < 0.1:
-        st.success("🌟 **完美光盤行動！** 感謝您減少食物浪費，環保積分已自動存入您的會員帳戶！")
-    elif residue_ratio < 0.4:
-        st.info("👍 **表現良好！** 大部分餐點都有食用完畢，繼續保持。")
-    else:
-        st.warning("⚠️ **檢測到較多剩食。** 系統已記錄本次數據，鼓勵下次適量點餐，減少廚餘碳足跡。")
+    with col_left:
+        st.subheader("📷 回收餐盤影像")
+        image = Image.open(uploaded_file).convert("RGB")
+        st.image(image, caption="已上傳的托盤回收照片", use_container_width=True)
+        
+    with col_right:
+        st.subheader("🤖 AI 即時推論分析")
+        
+        with st.spinner("AI 正在分析托盤畫面殘食比例..."):
+            inputs = processor(images=image, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outputs = model(**inputs)
+                raw_prediction = outputs.logits.item()
+                residue_ratio = max(0.0, min(1.0, raw_prediction))
+        
+        # 計算後端數據
+        dish_info = menu_database[selected_dish]
+        total_weight = dish_info["default_weight_g"]
+        waste_weight_g = total_weight * residue_ratio
+        carbon_wasted = (waste_weight_g / 1000.0) * dish_info["carbon_factor"]
+        points_earned = int((1.0 - residue_ratio) * 50)
+        
+        # 數據指標卡片
+        m1, m2, m3 = st.columns(3)
+        m1.metric("預測殘食比例", f"{residue_ratio * 100:.1f}%")
+        m2.metric("估算剩餘重量", f"{waste_weight_g:.1f} g")
+        m3.metric("會員環保積分", f"{points_earned} PTS")
+        
+        st.progress(residue_ratio, text=f"殘食佔比: {residue_ratio * 100:.1f}%")
+        
+        # 動態反饋訊息
+        if residue_ratio < 0.1:
+            st.success("🌟 **完美光盤行動！** 感謝您減少食物浪費，積分已自動存入！")
+        elif residue_ratio < 0.4:
+            st.info("👍 **表現良好！** 大部分餐點都有食用完畢。")
+        else:
+            st.warning("⚠️ **檢測到較多剩食。** 鼓勵下次適量點餐，減少廚餘碳足跡。")
+else:
+    st.info("👈 請先從左側側邊欄上傳餐盤回收照片，系統將自動為您生成審計報告。")

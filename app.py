@@ -557,7 +557,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         primary_cat = "光盤 Clean Plate"
         accent_color = "#10B981"
     else:
-        primary_cat = "主食與配料殘留"
+        primary_cat = "主食與配菜殘留"
         accent_color = "#D97706"
 
     img_draw = image.copy()
@@ -586,7 +586,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 6. Member Profile Synthesis (Loyalty Engine) - 完整完整版
+# 6. Member Profile Synthesis (Loyalty Engine)
 # ==============================================================================
 def analyze_member_loyalty_profile(member_id, df_all):
     if not member_id or member_id == "STAFF" or df_all.empty:
@@ -641,7 +641,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 7. Mode Renderers (完整三大模式與 UI)
+# 7. Mode Renderers
 # ==============================================================================
 def render_header():
     st.markdown("""
@@ -871,7 +871,7 @@ def render_mode3():
         st.dataframe(get_live_rewards(), use_container_width=True)
 
 # ==============================================================================
-# 8. Application Entry Point
+# 8. Application Entry Point (含完整側邊欄 Module 開關)
 # ==============================================================================
 def main():
     inject_safe_css()
@@ -883,12 +883,47 @@ def main():
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)
     if logo_target: st.sidebar.image(logo_target, width=175)
 
-    mode = st.sidebar.radio("模式選擇導航", ["Mode 1: 前線回收感應台", "Mode 2: 總部即時營運大盤", "Mode 3: 菜單與獎勵配置"], label_visibility="collapsed")
+    st.sidebar.markdown("""
+    <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:10px; padding:10px 14px; margin-bottom:16px;">
+        <div style="font-size:0.75rem; font-weight:800; color:#92400E;">現正執勤門市 (STORE)</div>
+        <div style="font-size:0.95rem; font-weight:900; color:#78350F; margin-top:2px;">中環威靈頓街店</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.markdown("##### 觸控模式選擇 (TOUCH NAVIGATION)")
+    mode = st.sidebar.radio(
+        label="模式選擇導航",
+        options=[
+            "Mode 1: 前線回收感應台",
+            "Mode 2: 總部即時營運大盤",
+            "Mode 3: 菜單與獎勵配置"
+        ],
+        label_visibility="collapsed"
+    )
+
+    # 🌟 完整恢復側邊欄企業模組狀態開關
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("##### 企業模組狀態 (MODULES)")
+    mod_1 = st.sidebar.checkbox("M1: 營運監控 (Ops Core)", value=True)
+    mod_2 = st.sidebar.checkbox("M2: 深度分析 (BI Analytics)", value=True)
+    mod_3 = st.sidebar.checkbox("M3: 精準營銷 (Smart POS)", value=True)
+    mod_4 = st.sidebar.checkbox("M4: 會員閉環 (Loyalty Loop)", value=True)
+
+    active_modules = {
+        "mod1": mod_1,
+        "mod2": mod_2,
+        "mod3": mod_3,
+        "mod4": mod_4
+    }
+
     render_header()
 
-    if mode.startswith("Mode 1"): render_mode1(engine, {"mod4": True})
-    elif mode.startswith("Mode 2"): render_mode2(engine, {"mod4": True})
-    else: render_mode3()
+    if mode.startswith("Mode 1"): 
+        render_mode1(engine, active_modules)
+    elif mode.startswith("Mode 2"): 
+        render_mode2(engine, active_modules)
+    else: 
+        render_mode3()
 
 if __name__ == "__main__":
     main()

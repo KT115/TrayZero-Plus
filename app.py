@@ -4,7 +4,7 @@ from PIL import Image
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 # ----------------------------------------------------
-版面配置與樣式設定
+# 版面配置與樣式設定
 # ----------------------------------------------------
 st.set_page_config(
     page_title="TrayZero+ 智慧餐盤殘食審計系統",
@@ -17,7 +17,7 @@ st.markdown("上傳大家的樂回收台餐盤照片，AI 系統將自動進行�
 st.markdown("---")
 
 # ----------------------------------------------------
-1. 載入 Hugging Face 微調好的專屬模型 (使用快取加速)
+# 1. 載入 Hugging Face 微調好的專屬模型 (使用快取加速)
 # ----------------------------------------------------
 @st.cache_resource(show_spinner=False)
 def load_trayzero_model():
@@ -38,7 +38,7 @@ with st.spinner("🔄 正在初始化 TrayZero+ AI 引擎與載入雲端模型..
 st.success("✅ AI 模型載入完畢，系統就緒！")
 
 # ----------------------------------------------------
-2. 後端商業邏輯資料庫：菜單與預設總重量 (對應第 2、3 項)
+# 2. 後端商業邏輯資料庫：菜單與預設總重量 (對應第 2、3 項)
 # ----------------------------------------------------
 menu_database = {
     "大家樂招牌海南雞飯": {"default_weight_g": 450, "carbon_factor": 2.5},
@@ -53,7 +53,7 @@ selected_dish = st.selectbox(
 )
 
 # ----------------------------------------------------
-3. 影像上傳與即時推論介面
+# 3. 影像上傳與即時推論介面
 # ----------------------------------------------------
 uploaded_file = st.file_uploader("📷 請上傳回收台托盤照片...", type=["jpg", "jpeg", "png"])
 
@@ -76,7 +76,7 @@ if uploaded_file is not None:
             residue_ratio = max(0.0, min(1.0, raw_prediction))
 
     # ----------------------------------------------------
-    4. 計算後端數據（重量、碳足跡、積分獎勵）
+    # 4. 計算後端數據（重量、碳足跡、積分獎勵）
     # ----------------------------------------------------
     dish_info = menu_database[selected_dish]
     total_weight = dish_info["default_weight_g"]
@@ -91,7 +91,7 @@ if uploaded_file is not None:
     points_earned = int((1.0 - residue_ratio) * 50)
 
     # ----------------------------------------------------
-    5. 呈現視覺化審計報告面板
+    # 5. 呈現視覺化審計報告面板
     # ----------------------------------------------------
     st.markdown("---")
     st.subheader("📊 TrayZero+ 智慧審計分析報告")

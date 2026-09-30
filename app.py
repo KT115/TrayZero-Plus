@@ -643,54 +643,41 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     with torch.no_grad():
         outputs = engine["model"](**inputs)
         raw_pred = outputs.logits.item() if outputs.logits.numel() == 1 else outputs.logits[0][0].item()
-        
-        # 迴歸模型直接輸出的數值即為 0.0 ~ 1.0 的殘食比例 (經過 Sigmoid 或直接截斷保護)
         ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
         ratio = max(0.0, min(1.0, ratio))
 
-    img_draw = image.copy()
-    draw = ImageDraw.Draw(img_draw)
-    items = []
-    
+    # 🛡️ 結合 CLIP 語意雙重防呆：檢測是否為幾乎完整未動的新餐點
     food_type_labels = [
-        "leftover noodles or pasta in the bowl",
-        "leftover rice on the plate",
-        "leftover meat, fishballs or sausages",
-        "leftover vegetables, green leaves or soup",
+        "full untouched meal on a plate",
+        "mostly eaten leftover food",
         "clean empty dish"
     ]
     type_res = engine["clip"](image_rgb, candidate_labels=food_type_labels)
     top_type = type_res[0]["label"]
 
-    is_noodle_menu = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
-    
-    if "noodles" in top_type or is_noodle_menu:
-        primary = "主食殘留 (麵食) Carb Residual (Noodles)"
-        accent_color = "#DC2626"
-    elif "rice" in top_type or "飯" in str(carb_type_from_csv):
-        primary = "主食殘留 (米飯) Carb Residual (Rice)"
-        accent_color = "#DC2626"
-    elif "meat" in top_type:
-        primary = "肉類殘留 Meat Residual"
-        accent_color = "#D97706"
-    else:
-        primary = "蔬菜/湯汁 Sides & Broth"
-        accent_color = "#10B981"
-
-    if ratio < 0.05:
-        primary_cat = "光盤 Clean Plate"
-        ratio = 0.0
-    elif ratio > 0.85:
+    if "untouched" in top_type or "full" in top_type:
+        ratio = 0.95
         primary_cat = "完整未動餐點 (未食用浪費)"
+        accent_color = "#DC2626"
+    elif ratio < 0.1:
+        ratio = 0.0
+        primary_cat = "光盤 Clean Plate"
+        accent_color = "#10B981"
     else:
-        primary_cat = primary
+        primary_cat = "主食與配菜殘留"
+        accent_color = "#D97706"
 
-    box = [int(width * 0.1), int(height * 0.1), int(width * 0.9), int(height * 0.9)]
+    img_draw = image.copy()
+    draw = ImageDraw.Draw(img_draw)
+    items = []
+
+    # 🎯 智慧修正繪圖框：集中在餐盤中央主體
+    box = [int(width * 0.15), int(height * 0.15), int(width * 0.85), int(height * 0.85)]
     draw.rectangle(box, outline=accent_color, width=4)
-    draw.text((box[0] + 10, box[1] + 10), f"Swin-Base 優化模型預測殘食率: {ratio*100:.1f}%", fill=accent_color)
+    draw.text((box[0] + 10, box[1] + 10), f"TrayZero+ 智慧校準殘食率: {ratio*100:.1f}%", fill=accent_color)
     
     items.append({
-        "分類項目 Category": primary.split(" ")[0], 
+        "分類項目 Category": primary_cat, 
         "置信度 Confidence": f"{type_res[0]['score']:.1%}", 
         "佔比 Coverage": f"{ratio*100:.1f}%"
     })
@@ -777,7 +764,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Frozen Backbone Swin-Base Powered)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Optimized Swin-Base + CLIP Powered)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -917,7 +904,7 @@ def render_mode1(engine, modules):
             st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
         else:
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
-            st.image(latest["img"], caption=f"🍽️️ {latest['dish']} {conf_str} • {latest['time']}")
+            st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
             
             if modules.get("mod4", True) and latest.get("member") != "STAFF":
                 st.markdown(f"""
@@ -968,7 +955,7 @@ def render_mode1(engine, modules):
             st.markdown(f"""
             <div class="pos-directive-card">
                 <b style="color:#0F172A; font-size:0.9rem;">👨‍🍳 大家樂後廚計量校準 (Kitchen Advisory)</b><br>
-                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由雲端優化 Swin-Base 迴歸模型運算。</span><br>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由智慧校準 AI 引擎運算。</span><br>
                 <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 系統已自動將交易流水與積分寫入 seed_audit_logs.csv 與資料庫。</span>
             </div>
             """, unsafe_allow_html=True)
@@ -1215,7 +1202,7 @@ def render_mode2(engine, modules):
         st.markdown('</div>', unsafe_allow_html=True)
 
 def render_mode3():
-    st.markdown("### ⚙️ 基礎資料管理 (Master Data Management - Live Cloud Store)")
+    st.markdown("### ⚙️️ 基礎資料管理 (Master Data Management - Live Cloud Store)")
     st.caption("支援連接 Google Drive / Google Sheets 發佈的 Live CSV 網址，系統每次刷新皆從雲端即時拉取。")
 
     tab_cloud, tab1, tab2, tab3 = st.tabs([

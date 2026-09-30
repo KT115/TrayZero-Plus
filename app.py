@@ -8,10 +8,7 @@ from PIL import Image, ImageDraw
 import torch
 from transformers import (
     AutoImageProcessor, 
-    AutoModelForImageClassification, 
-    AutoModelForObjectDetection,
-    AutoTokenizer, 
-    AutoModelForSeq2SeqLM,
+    AutoModelForImageClassification,
     pipeline
 )
 import altair as alt
@@ -42,11 +39,6 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
 DEFAULT_BASE_GDRIVE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSloK2WPNFd8HPY4RfL2rNhwhk_kD12H0q09nDcrlMrx5O_zqslCOi1TPAXvlHtnP1FWxyJxGgG99QX/pub?output=csv"
-
-CONTAINER_AND_BEVERAGE_BLOCKLIST = {
-    "cup", "bottle", "wine glass", "dining table", 
-    "knife", "fork", "spoon", "chopsticks", "person", "chair"
-}
 
 def inject_safe_css():
     st.markdown("""
@@ -614,24 +606,24 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dual-Transformer Engine (YOLOS 物件偵測定位 + ViT Regression 迴歸預測)
+# 5. Swin-Base Backbone Engine (升級為 microsoft/swin-base-patch4-window12-384)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # 載入您的微調迴歸模型 (ViT)
-    model_id = "kktlau115/trayzero-vit-regression"
-    print(f"📥 正在載入微調迴歸模型: {model_id}...")
-    processor = AutoImageProcessor.from_pretrained(model_id)
-    regression_model = AutoModelForImageClassification.from_pretrained(model_id).to(dev)
-    regression_model.eval()
+    # 升級骨幹模型為微軟高效能 Swin-Base (支援 384x384 高解析度輸入與移位視窗注意力機制)
+    model_id = "microsoft/swin-base-patch4-window12-384"
+    print(f"📥 正在載入高效能 Swin-Base 視覺 Transformer 模型: {model_id}...")
     
-    # 重新加入 YOLOS 物件偵測 Transformer (Transformer A) 負責過濾背景與抓取食物容器
-    print("📥 正在載入 YOLOS 物件偵測模型 (hustvl/yolos-tiny)...")
-    yolos_processor = AutoImageProcessor.from_pretrained("hustvl/yolos-tiny")
-    yolos_detector = AutoModelForObjectDetection.from_pretrained("hustvl/yolos-tiny").to(dev)
-    yolos_detector.eval()
+    processor = AutoImageProcessor.from_pretrained(model_id)
+    # 這裡載入 ImageClassification 架構並設定 num_labels=1 作為迴歸輸出
+    model = AutoModelForImageClassification.from_pretrained(
+        model_id, 
+        num_labels=1, 
+        ignore_mismatched_sizes=True
+    ).to(dev)
+    model.eval()
     
     clip_classifier = pipeline(
         "zero-shot-image-classification", 
@@ -641,9 +633,7 @@ def load_ai_engine():
     
     return {
         "processor": processor,
-        "model": regression_model,
-        "yolos_proc": yolos_processor,
-        "yolos_det": yolos_detector,
+        "model": model,
         "clip": clip_classifier,
         "device": dev
     }
@@ -651,53 +641,15 @@ def load_ai_engine():
 def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     image_rgb = image.convert("RGB")
     width, height = image_rgb.size
-    total_area = width * height
     
-    # --------------------------------------------------------------------------
-    # 階段 1：使用 YOLOS 進行容器定位與背景排除 (Transformer A)
-    # --------------------------------------------------------------------------
-    yolos_inputs = engine["yolos_proc"](images=image_rgb, return_tensors="pt").to(engine["device"])
+    # 透過 Swin-Base 進行高解析度特徵提取與殘食率迴歸預測
+    inputs = engine["processor"](images=image_rgb, return_tensors="pt").to(engine["device"])
     with torch.no_grad():
-        yolos_outputs = engine["yolos_det"](**yolos_inputs)
+        outputs = engine["model"](**inputs)
+        raw_pred = outputs.logits.item() if outputs.logits.numel() == 1 else outputs.logits[0][0].item()
         
-    sz = torch.tensor([[height, width]]).to(engine["device"])
-    results = engine["yolos_proc"].post_process_object_detection(yolos_outputs, threshold=0.15, target_sizes=sz)[0]
-    
-    # 尋找最佳的食物容器 (排除杯子、餐具等阻礙物)
-    best_crop_box = None
-    max_box_area = 0
-    
-    for box, score, label_id in zip(results["boxes"].tolist(), results["scores"].tolist(), results["labels"].tolist()):
-        lbl = engine["yolos_det"].config.id2label.get(label_id, "item").lower()
-        if lbl in CONTAINER_AND_BEVERAGE_BLOCKLIST:
-            continue
-            
-        b = [max(0, int(box[0])), max(0, int(box[1])), min(width, int(box[2])), min(height, int(box[3]))]
-        box_area = (b[2] - b[0]) * (b[3] - b[1])
-        
-        # 篩選掉佔比過大或過小的雜訊框
-        if box_area > total_area * 0.85 or box_area < total_area * 0.05:
-            continue
-            
-        if box_area > max_box_area:
-            max_box_area = box_area
-            best_crop_box = b
-
-    # 若 YOLOS 沒有成功抓到精準容器，則自動取畫面中央區域作為預設容器
-    if best_crop_box is None:
-        best_crop_box = [int(width * 0.15), int(height * 0.15), int(width * 0.85), int(height * 0.85)]
-
-    # 裁切出乾淨的容器畫面 (過濾掉周邊凍檸茶與紅色托盤背景)
-    cropped_food_img = image_rgb.crop(best_crop_box)
-
-    # --------------------------------------------------------------------------
-    # 階段 2：將乾淨的局部畫面交由微調 ViT 迴歸模型進行精準預測 (Transformer B)
-    # --------------------------------------------------------------------------
-    vit_inputs = engine["processor"](images=cropped_food_img, return_tensors="pt").to(engine["device"])
-    with torch.no_grad():
-        outputs = engine["model"](**vit_inputs)
-        raw_pred = outputs.logits.item()
-        ratio = max(0.0, min(1.0, raw_pred))
+        # 使用 Sigmoid 將數值平滑映射至 0.0 ~ 1.0 之間
+        ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
 
     img_draw = image.copy()
     draw = ImageDraw.Draw(img_draw)
@@ -711,7 +663,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         "leftover vegetables, green leaves or soup",
         "clean empty dish"
     ]
-    type_res = engine["clip"](cropped_food_img, candidate_labels=food_type_labels)
+    type_res = engine["clip"](image_rgb, candidate_labels=food_type_labels)
     top_type = type_res[0]["label"]
 
     is_noodle_menu = any(kw in str(carb_type_from_csv) for kw in ["麵", "意粉", "粉", "Spaghetti", "Noodle"])
@@ -729,16 +681,18 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         primary = "蔬菜/湯汁 Sides & Broth"
         accent_color = "#10B981"
 
-    if ratio == 0.0:
+    if ratio < 0.05:
         primary_cat = "光盤 Clean Plate"
+        ratio = 0.0
     elif ratio > 0.85:
         primary_cat = "完整未動餐點 (未食用浪費)"
     else:
         primary_cat = primary
 
-    # 在圖上繪製 YOLOS 偵測到的容器範圍與 ViT 預測結果
-    draw.rectangle(best_crop_box, outline=accent_color, width=4)
-    draw.text((best_crop_box[0] + 8, best_crop_box[1] + 8), f"AI 殘食率: {ratio*100:.1f}%", fill=accent_color)
+    # 在圖上繪製分析範圍與預測殘食率
+    box = [int(width * 0.1), int(height * 0.1), int(width * 0.9), int(height * 0.9)]
+    draw.rectangle(box, outline=accent_color, width=4)
+    draw.text((box[0] + 10, box[1] + 10), f"Swin-Base 預測殘食率: {ratio*100:.1f}%", fill=accent_color)
     
     items.append({
         "分類項目 Category": primary.split(" ")[0], 
@@ -828,7 +782,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Dual-Transformer Powered)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Swin-Base Powered)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -906,7 +860,7 @@ def render_mode1(engine, modules):
                     should_run = True
 
         if img_cap is not None and should_run:
-            with st.spinner("🚀 雙 Transformer 引擎 (YOLOS + ViT) 正在分析托盤畫面..."):
+            with st.spinner("🚀 Swin-Base 視覺 AI 引擎正在進行高解析度殘食分析..."):
                 candidate_names = df_d["name"].tolist()
                 if auto_dish:
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine)
@@ -1019,7 +973,7 @@ def render_mode1(engine, modules):
             st.markdown(f"""
             <div class="pos-directive-card">
                 <b style="color:#0F172A; font-size:0.9rem;">👨‍🍳 大家樂後廚計量校準 (Kitchen Advisory)</b><br>
-                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由雙 Transformer 引擎運算。</span><br>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由 Swin-Base 視覺 Transformer 運算。</span><br>
                 <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 系統已自動將交易流水與積分寫入 seed_audit_logs.csv 與資料庫。</span>
             </div>
             """, unsafe_allow_html=True)
@@ -1328,7 +1282,7 @@ def main():
     inject_safe_css()
     init_db()
 
-    with st.spinner("🚀 正在啟動 TrayZero+ 雙 Transformer AI 引擎 (YOLOS + ViT Regression)..."):
+    with st.spinner("🚀 正在載入 Swin-Base 高解析度視覺 AI 引擎..."):
         engine = load_ai_engine()
 
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)

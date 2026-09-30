@@ -108,15 +108,22 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. Database Connection & Schema Setup
+# 2. Database Connection & Schema Setup (自動重建防呆)
 # ==============================================================================
 def db_conn(): 
     return sqlite3.connect(DB_FILE)
 
 def init_db():
     with db_conn() as conn:
+        # 強制重建表格以避免欄位衝突
+        conn.execute("DROP TABLE IF EXISTS audit_logs")
+        conn.execute("DROP TABLE IF EXISTS master_dishes_db")
+        conn.execute("DROP TABLE IF EXISTS master_branches_db")
+        conn.execute("DROP TABLE IF EXISTS master_rewards_db")
+        conn.execute("DROP TABLE IF EXISTS cloud_config_db")
+
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS audit_logs (
+            CREATE TABLE audit_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT,
                 audit_date TEXT,
@@ -132,7 +139,7 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS master_dishes_db (
+            CREATE TABLE master_dishes_db (
                 dish_id TEXT PRIMARY KEY,
                 name TEXT,
                 main_carb TEXT,
@@ -140,7 +147,7 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS master_branches_db (
+            CREATE TABLE master_branches_db (
                 name TEXT PRIMARY KEY,
                 level TEXT,
                 district TEXT,
@@ -150,7 +157,7 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS master_rewards_db (
+            CREATE TABLE master_rewards_db (
                 reward_id TEXT PRIMARY KEY,
                 tier_name TEXT,
                 max_waste_ratio REAL,
@@ -160,7 +167,7 @@ def init_db():
             )
         """)
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS cloud_config_db (
+            CREATE TABLE cloud_config_db (
                 key TEXT PRIMARY KEY,
                 url TEXT
             )
@@ -189,14 +196,6 @@ def init_db():
             ("R03", "支持環保獎 (Green Return)", 100.0, "Points", "【10 綠色環保積分】", 1)
         ]
         conn.executemany("INSERT OR REPLACE INTO master_rewards_db VALUES (?, ?, ?, ?, ?, ?)", init_rewards)
-
-def get_cloud_urls():
-    urls = {"base_url": DEFAULT_BASE_GDRIVE_URL}
-    with db_conn() as conn:
-        rows = conn.execute("SELECT key, url FROM cloud_config_db").fetchall()
-        for k, u in rows:
-            if u and u.strip(): urls[k] = u.strip()
-    return urls
 
 def get_live_dishes():
     with db_conn() as conn:
@@ -237,7 +236,7 @@ def get_records():
         return pd.read_sql("SELECT * FROM audit_logs ORDER BY id DESC", conn)
 
 # ==============================================================================
-# 5. High-Precision CLIP Zero-Shot Engine (取代失准的微調模型)
+# 3. High-Precision CLIP Zero-Shot Engine
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -254,7 +253,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     image_rgb = image.convert("RGB")
     width, height = image_rgb.size
     
-    # 🌟 使用精準的語意對比清單，直接識別大家樂餐盤狀態
     state_labels = [
         "a full untouched meal with rice and meat, perfectly clean plate with no food eaten",
         "half eaten meal with some leftover food on the plate",
@@ -265,21 +263,20 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     res = engine["clip"](image_rgb, candidate_labels=state_labels)
     top_label = res[0]["label"]
     
-    # 根據語意匹配精準判定殘食率 (0.0 ~ 1.0)
     if "untouched" in top_label or "full" in top_label:
-        ratio = 0.95  # 完整未動 (未食用浪費)
+        ratio = 0.95
         primary_cat = "完整未動餐點 (未食用浪費)"
         accent_color = "#DC2626"
     elif "empty" in top_label or "zero waste" in top_label:
-        ratio = 0.0   # 光盤
+        ratio = 0.0
         primary_cat = "光盤 Clean Plate"
         accent_color = "#10B981"
     elif "half" in top_label:
-        ratio = 0.5   # 吃了一半
+        ratio = 0.5
         primary_cat = "主食與配料半數殘留"
         accent_color = "#D97706"
     else:
-        ratio = 0.8   # 大量剩餘
+        ratio = 0.8
         primary_cat = "大量主食與肉類浪費"
         accent_color = "#DC2626"
 
@@ -308,19 +305,8 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
     except Exception:
         return candidate_dishes[0], 0.75
 
-def analyze_member_loyalty_profile(member_id, df_all):
-    if not member_id or member_id == "STAFF" or df_all.empty: return None
-    m_df = df_all[df_all["member_id"] == member_id]
-    if m_df.empty: return None
-    return {
-        "total_visits": len(m_df),
-        "avg_waste": m_df["waste_ratio"].mean(),
-        "favorite_dish": m_df["dish_name"].mode()[0] if not m_df["dish_name"].empty else "一哥焗豬扒飯",
-        "crm_segment": "精明惜食會員 (Green Member)"
-    }
-
 # ==============================================================================
-# 6. Mode Renderers
+# 4. Mode Renderers
 # ==============================================================================
 def render_header():
     st.markdown("""
@@ -336,7 +322,6 @@ def render_mode1(engine, modules):
         st.warning("⚠️ 門市或餐點清單為空！")
         return
 
-    df_history = get_records()
     c1, c2 = st.columns([1.15, 0.85])
     
     with c1:

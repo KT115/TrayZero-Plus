@@ -606,18 +606,16 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. AI Engine (載入已完成 Food-101 + Food-Waste 雙階段訓練的專屬模型)
+# 5. AI Engine (載入已完成凍結骨幹優化、推送到雲端的專屬模型)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     
-    # 🌟 指向我們剛剛訓練完成並儲存的本地模型路徑 (或改為您的 Hugging Face 專案 ID，例如 "laukwantai/trayzero-swin-waste-regression")
-    model_path = "./saved_trayzero_swin_regression_model"
-    if not os.path.exists(model_path):
-        model_path = "microsoft/swin-base-patch4-window12-384" # 若本地尚未訓練完成則暫時回退基礎模型
-        
-    print(f"📥 正在載入 TrayZero+ 專屬雙階段訓練視覺 AI 模型: {model_path}...")
+    # 🌟 直接指向您剛上傳至 Hugging Face 的優化模型專案
+    model_path = "kktlau115/trayzero-frozen-swin-model"
+    
+    print(f"📥 正在從 Hugging Face 載入 TrayZero+ 專屬優化 AI 模型: {model_path}...")
     
     processor = AutoImageProcessor.from_pretrained(model_path)
     model = AutoModelForImageClassification.from_pretrained(model_path).to(dev)
@@ -689,7 +687,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
 
     box = [int(width * 0.1), int(height * 0.1), int(width * 0.9), int(height * 0.9)]
     draw.rectangle(box, outline=accent_color, width=4)
-    draw.text((box[0] + 10, box[1] + 10), f"Swin-Base 專屬模型預測殘食率: {ratio*100:.1f}%", fill=accent_color)
+    draw.text((box[0] + 10, box[1] + 10), f"Swin-Base 優化模型預測殘食率: {ratio*100:.1f}%", fill=accent_color)
     
     items.append({
         "分類項目 Category": primary.split(" ")[0], 
@@ -779,7 +777,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Finetuned Swin-Base Powered)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Frozen Backbone Swin-Base Powered)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -857,7 +855,7 @@ def render_mode1(engine, modules):
                     should_run = True
 
         if img_cap is not None and should_run:
-            with st.spinner("🚀 TrayZero+ 專屬微調 AI 模型正在進行精準殘食分析..."):
+            with st.spinner("🚀 TrayZero+ 專屬優化 AI 模型正在進行精準殘食分析..."):
                 candidate_names = df_d["name"].tolist()
                 if auto_dish:
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine)
@@ -919,7 +917,7 @@ def render_mode1(engine, modules):
             st.info("💡 尚未執行偵測。請對準餐盤拍照或上傳。")
         else:
             conf_str = f"({latest.get('conf', 1.0):.1%})" if 'conf' in latest else ""
-            st.image(latest["img"], caption=f"🍽️ {latest['dish']} {conf_str} • {latest['time']}")
+            st.image(latest["img"], caption=f"🍽️️ {latest['dish']} {conf_str} • {latest['time']}")
             
             if modules.get("mod4", True) and latest.get("member") != "STAFF":
                 st.markdown(f"""
@@ -970,7 +968,7 @@ def render_mode1(engine, modules):
             st.markdown(f"""
             <div class="pos-directive-card">
                 <b style="color:#0F172A; font-size:0.9rem;">👨‍🍳 大家樂後廚計量校準 (Kitchen Advisory)</b><br>
-                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由雙階段微調 Swin-Base 迴歸模型運算。</span><br>
+                <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 餐點【{latest['dish'].split(' ')[0]}】殘食率為 {latest['ratio']:.1%}，由雲端優化 Swin-Base 迴歸模型運算。</span><br>
                 <span style="font-size:0.8rem; color:#475569; font-weight:700;">• 系統已自動將交易流水與積分寫入 seed_audit_logs.csv 與資料庫。</span>
             </div>
             """, unsafe_allow_html=True)
@@ -989,7 +987,7 @@ def render_mode2(engine, modules):
     with col_ctrl1:
         period_filter = st.radio(
             "統計時間維度 (Period)",
-            ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️️ 本月 (This Month)", "📈 本年度 (This Year)", "🌐 全部歷史 (All Time)"],
+            ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓 本月 (This Month)", "📈 本年度 (This Year)", "🌐 全部歷史 (All Time)"],
             horizontal=True,
             index=4
         )
@@ -1279,7 +1277,7 @@ def main():
     inject_safe_css()
     init_db()
 
-    with st.spinner("🚀 正在載入 TrayZero+ 專屬微調 Swin-Base 視覺 AI 引擎..."):
+    with st.spinner("🚀 正在載入 TrayZero+ 專屬優化 Swin-Base 視覺 AI 引擎..."):
         engine = load_ai_engine()
 
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)

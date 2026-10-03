@@ -112,7 +112,6 @@ def init_db():
         """)
         conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
         
-        # 預設資料初始化
         count = conn.execute("SELECT COUNT(*) FROM master_dishes_db").fetchone()[0]
         if count == 0:
             init_dishes = [
@@ -193,12 +192,12 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Single-Model Optimized CLIP AI Engine (省記憶體三元件解析)
+# 5. Dynamic Variable CLIP AI Engine (解決數值固定不變問題)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入輕量化 CLIP 引擎於裝置: {dev.upper()}...")
+    print(f"📥 正在載入動態變異 CLIP 引擎於裝置: {dev.upper()}...")
     
     clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
@@ -233,16 +232,35 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     veg_probs = compute_clip_similarity(image_rgb, veg_labels, engine)
     state_probs = compute_clip_similarity(image_rgb, state_labels, engine)
 
+    # 🌟 改為基於最高信心類別與機率的動態映射，確保不同殘留量會得出截然不同的百分比
     state_idx = int(np.argmax(state_probs))
+    state_conf = float(state_probs[state_idx])
 
-    carb_ratio = float(carb_probs[1] * 0.5 + carb_probs[2] * 0.95)
-    protein_ratio = float(protein_probs[1] * 0.5 + protein_probs[2] * 0.95)
-    veg_ratio = float(veg_probs[1] * 0.5 + veg_probs[2] * 0.95)
+    # 根據預測出的狀態類別給予動態基準值，再用信心指數微調
+    if state_idx == 0:    # 完整未動
+        base_ratio = 0.92 + (state_conf * 0.08)
+    elif state_idx == 1:  # 食用過半
+        base_ratio = 0.45 + (state_conf * 0.20)
+    elif state_idx == 2:  # 光盤
+        base_ratio = 0.01 + ((1.0 - state_conf) * 0.04)
+    else:                 # 垃圾/紙巾
+        base_ratio = 0.0
 
-    ratio = float((carb_ratio * 0.4) + (protein_ratio * 0.4) + (veg_ratio * 0.2))
+    # 同樣讓三元件根據各自的 argmax 狀態動態計算
+    carb_idx = int(np.argmax(carb_probs))
+    protein_idx = int(np.argmax(protein_probs))
+    veg_idx = int(np.argmax(veg_probs))
+
+    component_map = {0: 0.03, 1: 0.52, 2: 0.94}
+    carb_ratio = component_map.get(carb_idx, 0.5) * float(carb_probs[carb_idx])
+    protein_ratio = component_map.get(protein_idx, 0.5) * float(protein_probs[protein_idx])
+    veg_ratio = component_map.get(veg_idx, 0.5) * float(veg_probs[veg_idx])
+
+    # 綜合融合總殘食率
+    ratio = float((base_ratio * 0.4) + (carb_ratio * 0.25) + (protein_ratio * 0.25) + (veg_ratio * 0.1))
     ratio = max(0.0, min(1.0, ratio))
 
-    # 🌟 6 級精細化分級門檻 (5%以下光盤，6-14%接近光盤)
+    # 🌟 精細化 6 級 Grouping 門檻
     if ratio >= 0.90:
         primary_cat = "完整未動餐點 (90-100% Untouched)"
         accent_color = "#DC2626"
@@ -309,12 +327,12 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 7. Mode Renderers (含修復完成的 Mode 2 營運大盤)
+# 7. Mode Renderers
 # ==============================================================================
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Fine-Grained Grouping Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Dynamic Variable Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -348,7 +366,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 CLIP 三元件精細化引擎正在進行審計..."):
+                with st.spinner("🚀 動態變異 CLIP 引擎正在計算精準殘食率..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -371,7 +389,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ 精細化審計數據已同步！")
+                    st.toast("✅ 動態審計數據已同步！")
                     st.rerun()
 
     with c2:
@@ -399,7 +417,6 @@ def render_mode2(engine, modules):
         st.markdown('<div class="empty-state-box">📭 目前尚無審計數據，請先至 Mode 1 進行餐盤掃描。</div>', unsafe_allow_html=True)
         return
 
-    # 營運指標卡片
     n = len(df_raw)
     avg_w = df_raw["waste_ratio"].mean()
     tot_hkd = df_raw["cost_waste_hkd"].sum()
@@ -434,7 +451,7 @@ def main():
     inject_safe_css()
     init_db()
 
-    with st.spinner("🚀 正在載入三元件 AI 引擎..."):
+    with st.spinner("🚀 正在載入 AI 引擎..."):
         engine = load_ai_engine()
 
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)

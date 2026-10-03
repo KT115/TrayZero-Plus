@@ -192,7 +192,7 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Robust CLIP AI Engine (含光盤強制歸零覆蓋機制)
+# 5. Robust CLIP AI Engine (含完整未動強效鎖定機制)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
@@ -235,33 +235,32 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     state_idx = int(np.argmax(state_probs))
     state_conf = float(state_probs[state_idx])
 
-    # 🌟 核心修復：如果狀態被判定為「光盤 (state_idx == 2)」或整體信心偏向光盤，強制將所有殘留佔比歸零！
-    if state_idx == 2:  # Clean empty dish zero waste
-        base_ratio = 0.02
+    # 🌟 核心修復：如果狀態被判定為「完整未動 (state_idx == 0)」，強制將總佔比與所有元件鎖定在 92% ~ 98%！
+    if state_idx == 0:  # Full untouched meal on a plate
+        ratio = 0.95 + (state_conf * 0.03)
+        carb_ratio = 0.94 + (state_conf * 0.04)
+        protein_ratio = 0.93 + (state_conf * 0.05)
+        veg_ratio = 0.92 + (state_conf * 0.06)
+    elif state_idx == 2:  # Clean empty dish zero waste
+        ratio = 0.02
         carb_ratio = 0.0
         protein_ratio = 0.0
         veg_ratio = 0.0
     else:
-        if state_idx == 0:    # 完整未動
-            base_ratio = 0.92 + (state_conf * 0.08)
-        elif state_idx == 1:  # 食用過半
+        if state_idx == 1:  # 食用過半
             base_ratio = 0.45 + (state_conf * 0.20)
-        else:                 # 垃圾/紙巾
+        else:               # 垃圾/紙巾
             base_ratio = 0.0
 
         carb_idx = int(np.argmax(carb_probs))
         protein_idx = int(np.argmax(protein_probs))
         veg_idx = int(np.argmax(veg_probs))
 
-        component_map = {0: 0.02, 1: 0.52, 2: 0.94}
+        component_map = {0: 0.03, 1: 0.52, 2: 0.94}
         carb_ratio = component_map.get(carb_idx, 0.5) * float(carb_probs[carb_idx])
         protein_ratio = component_map.get(protein_idx, 0.5) * float(protein_probs[protein_idx])
         veg_ratio = component_map.get(veg_idx, 0.5) * float(veg_probs[veg_idx])
 
-    # 綜合融合總殘食率
-    if state_idx == 2:
-        ratio = 0.02
-    else:
         ratio = float((base_ratio * 0.4) + (carb_ratio * 0.25) + (protein_ratio * 0.25) + (veg_ratio * 0.1))
         ratio = max(0.0, min(1.0, ratio))
 
@@ -337,7 +336,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Zero-Waste Override Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Untouched Lock Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -371,7 +370,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 CLIP 引擎正在進行光盤強固校準與審計..."):
+                with st.spinner("🚀 CLIP 引擎正在執行完整未動鎖定與審計..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -394,7 +393,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ 光盤校準審計數據已同步！")
+                    st.toast("✅ 鎖定校準審計數據已同步！")
                     st.rerun()
 
     with c2:
@@ -438,7 +437,7 @@ def render_mode2(engine, modules):
     st.dataframe(df_raw, use_container_width=True)
 
 def render_mode3():
-    st.markdown("### ⚙️ 基礎資料管理")
+    st.markdown("### ⚙️️ 基礎資料管理")
     tab_cloud, tab1, tab2, tab3 = st.tabs(["☁️ 雲端連線", "🏢 分店管理", "🍱 菜單管理", "🎁 獎勵規則"])
     with tab_cloud:
         c_base = st.text_input("Google Drive 主發佈 CSV 網址", value=get_cloud_urls().get("base_url", DEFAULT_BASE_GDRIVE_URL), key="input_gdrive_url_widget")

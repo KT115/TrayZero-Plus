@@ -194,19 +194,18 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Swin Transformer Regression Engine (主打精確像素數值迴歸)
+# 5. Dual-Model Collaborative AI Engine (SWIN + CLIP 錨點校準版)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入 Swin Transformer 迴歸引擎於裝置: {dev.upper()}...")
+    print(f"📥 正在載入 Swin + CLIP 錨點協同引擎於裝置: {dev.upper()}...")
     
     swin_path = "kktlau115/trayzero-frozen-swin-model"
     swin_processor = AutoImageProcessor.from_pretrained(swin_path)
     swin_model = AutoModelForImageClassification.from_pretrained(swin_path).to(dev)
     swin_model.eval()
 
-    # 同時載入輕量 CLIP 用於菜單名稱識別
     clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
     clip_model = CLIPModel.from_pretrained(clip_path).to(dev)
@@ -231,7 +230,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     width, height = image_rgb.size
     dev = engine["device"]
 
-    # 🌟 使用 Swin 模型直接計算精確殘食比例 (Regression)
+    # 1. SWIN 像素殘留迴歸
     swin_inputs = engine["swin_processor"](images=image_rgb, return_tensors="pt").to(dev)
     with torch.no_grad():
         swin_out = engine["swin_model"](**swin_inputs)
@@ -239,14 +238,37 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         swin_ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
         swin_ratio = max(0.0, min(1.0, swin_ratio))
 
-    ratio = swin_ratio
+    # 2. CLIP 語意狀態辨識 (作為強效錨點校準)
+    state_labels = [
+        "full untouched meal on a plate with complete food", 
+        "half eaten food", 
+        "clean empty dish zero waste", 
+        "crumpled tissue paper or waste on tray"
+    ]
+    state_probs = compute_clip_similarity(image_rgb, state_labels, engine)
+    state_idx = int(np.argmax(state_probs))
+    state_conf = float(state_probs[state_idx])
 
-    # 三元件細粒度佔比根據 Swin 總比例進行合理拆解與微調
-    carb_ratio = max(0.0, min(1.0, ratio * 1.05))
-    protein_ratio = max(0.0, min(1.0, ratio * 0.95))
-    veg_ratio = max(0.0, min(1.0, ratio * 0.90))
+    # 🌟 引入強效錨點校準邏輯 (解決 Swin 數值卡在中間的盲點)
+    if state_idx == 0 and state_conf > 0.45:  # 完整未動錨點
+        ratio = 0.95 + (state_conf * 0.04)
+        carb_ratio = 0.96
+        protein_ratio = 0.94
+        veg_ratio = 0.93
+    elif state_idx == 2 and state_conf > 0.40: # 光盤錨點
+        ratio = 0.02
+        carb_ratio = 0.0
+        protein_ratio = 0.0
+        veg_ratio = 0.0
+    else:  # 食用過半或一般殘留交由 Swin 迴歸
+        ratio = swin_ratio
+        carb_ratio = max(0.0, min(1.0, ratio * 1.05))
+        protein_ratio = max(0.0, min(1.0, ratio * 0.95))
+        veg_ratio = max(0.0, min(1.0, ratio * 0.90))
 
-    # 🌟 6 級精細化分級 Grouping 門檻 (5%以下光盤，6-14%接近光盤)
+    ratio = max(0.0, min(1.0, ratio))
+
+    # 🌟 精細化 6 級 Grouping 門檻 (5%以下光盤，6-14%接近光盤)
     if ratio >= 0.90:
         primary_cat = "完整未動餐點 (90-100% Untouched)"
         accent_color = "#DC2626"
@@ -277,7 +299,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
 
     box = [int(width * 0.15), int(height * 0.15), int(width * 0.85), int(height * 0.85)]
     draw.rectangle(box, outline=accent_color, width=4)
-    draw.text((box[0] + 10, box[1] + 10), f"Swin 殘食迴歸率: {ratio*100:.1f}%", fill=accent_color)
+    draw.text((box[0] + 10, box[1] + 10), f"綜合殘食率: {ratio*100:.1f}%", fill=accent_color)
 
     return img_draw, items, ratio, primary_cat, True
 
@@ -318,7 +340,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Swin Regression Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Anchor-Calibrated Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -352,7 +374,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 Swin Transformer 迴歸模型正在計算精確殘食率..."):
+                with st.spinner("🚀 錨點校準引擎正在計算精確殘食率..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -375,7 +397,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ Swin 迴歸審計數據已同步！")
+                    st.toast("✅ 錨點校準審計數據已同步！")
                     st.rerun()
 
     with c2:
@@ -437,7 +459,7 @@ def main():
     inject_safe_css()
     init_db()
 
-    with st.spinner("🚀 正在載入 Swin AI 引擎..."):
+    with st.spinner("🚀 正在載入 AI 引擎..."):
         engine = load_ai_engine()
 
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)

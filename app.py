@@ -192,12 +192,12 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dynamic Variable CLIP AI Engine (解決數值固定不變問題)
+# 5. Robust CLIP AI Engine (含光盤強制歸零覆蓋機制)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入動態變異 CLIP 引擎於裝置: {dev.upper()}...")
+    print(f"📥 正在載入強固型 CLIP 引擎於裝置: {dev.upper()}...")
     
     clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
@@ -232,33 +232,38 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     veg_probs = compute_clip_similarity(image_rgb, veg_labels, engine)
     state_probs = compute_clip_similarity(image_rgb, state_labels, engine)
 
-    # 🌟 改為基於最高信心類別與機率的動態映射，確保不同殘留量會得出截然不同的百分比
     state_idx = int(np.argmax(state_probs))
     state_conf = float(state_probs[state_idx])
 
-    # 根據預測出的狀態類別給予動態基準值，再用信心指數微調
-    if state_idx == 0:    # 完整未動
-        base_ratio = 0.92 + (state_conf * 0.08)
-    elif state_idx == 1:  # 食用過半
-        base_ratio = 0.45 + (state_conf * 0.20)
-    elif state_idx == 2:  # 光盤
-        base_ratio = 0.01 + ((1.0 - state_conf) * 0.04)
-    else:                 # 垃圾/紙巾
-        base_ratio = 0.0
+    # 🌟 核心修復：如果狀態被判定為「光盤 (state_idx == 2)」或整體信心偏向光盤，強制將所有殘留佔比歸零！
+    if state_idx == 2:  # Clean empty dish zero waste
+        base_ratio = 0.02
+        carb_ratio = 0.0
+        protein_ratio = 0.0
+        veg_ratio = 0.0
+    else:
+        if state_idx == 0:    # 完整未動
+            base_ratio = 0.92 + (state_conf * 0.08)
+        elif state_idx == 1:  # 食用過半
+            base_ratio = 0.45 + (state_conf * 0.20)
+        else:                 # 垃圾/紙巾
+            base_ratio = 0.0
 
-    # 同樣讓三元件根據各自的 argmax 狀態動態計算
-    carb_idx = int(np.argmax(carb_probs))
-    protein_idx = int(np.argmax(protein_probs))
-    veg_idx = int(np.argmax(veg_probs))
+        carb_idx = int(np.argmax(carb_probs))
+        protein_idx = int(np.argmax(protein_probs))
+        veg_idx = int(np.argmax(veg_probs))
 
-    component_map = {0: 0.03, 1: 0.52, 2: 0.94}
-    carb_ratio = component_map.get(carb_idx, 0.5) * float(carb_probs[carb_idx])
-    protein_ratio = component_map.get(protein_idx, 0.5) * float(protein_probs[protein_idx])
-    veg_ratio = component_map.get(veg_idx, 0.5) * float(veg_probs[veg_idx])
+        component_map = {0: 0.02, 1: 0.52, 2: 0.94}
+        carb_ratio = component_map.get(carb_idx, 0.5) * float(carb_probs[carb_idx])
+        protein_ratio = component_map.get(protein_idx, 0.5) * float(protein_probs[protein_idx])
+        veg_ratio = component_map.get(veg_idx, 0.5) * float(veg_probs[veg_idx])
 
     # 綜合融合總殘食率
-    ratio = float((base_ratio * 0.4) + (carb_ratio * 0.25) + (protein_ratio * 0.25) + (veg_ratio * 0.1))
-    ratio = max(0.0, min(1.0, ratio))
+    if state_idx == 2:
+        ratio = 0.02
+    else:
+        ratio = float((base_ratio * 0.4) + (carb_ratio * 0.25) + (protein_ratio * 0.25) + (veg_ratio * 0.1))
+        ratio = max(0.0, min(1.0, ratio))
 
     # 🌟 精細化 6 級 Grouping 門檻
     if ratio >= 0.90:
@@ -332,7 +337,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Dynamic Variable Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Zero-Waste Override Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -366,7 +371,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 動態變異 CLIP 引擎正在計算精準殘食率..."):
+                with st.spinner("🚀 CLIP 引擎正在進行光盤強固校準與審計..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -389,7 +394,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ 動態審計數據已同步！")
+                    st.toast("✅ 光盤校準審計數據已同步！")
                     st.rerun()
 
     with c2:

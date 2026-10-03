@@ -7,8 +7,6 @@ import numpy as np
 from PIL import Image, ImageDraw
 import torch
 from transformers import (
-    AutoImageProcessor, 
-    AutoModelForImageClassification,
     CLIPProcessor,
     CLIPModel
 )
@@ -84,49 +82,65 @@ def db_conn(): return sqlite3.connect(DB_FILE)
 
 def init_db():
     with db_conn() as conn:
-        conn.execute("DROP TABLE IF EXISTS audit_logs")
-        conn.execute("DROP TABLE IF EXISTS master_dishes_db")
-        conn.execute("DROP TABLE IF EXISTS master_branches_db")
-        conn.execute("DROP TABLE IF EXISTS master_rewards_db")
-        conn.execute("DROP TABLE IF EXISTS cloud_config_db")
-
         conn.execute("""
-            CREATE TABLE audit_logs (
+            CREATE TABLE IF NOT EXISTS audit_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT, audit_date TEXT, audit_month TEXT, branch_name TEXT,
                 member_id TEXT, dish_name TEXT, primary_waste TEXT, waste_ratio REAL,
                 cost_waste_hkd REAL, co2_emission_kg REAL, reward_issued TEXT
             )
         """)
-        conn.execute("CREATE TABLE master_dishes_db (dish_id TEXT PRIMARY KEY, name TEXT, main_carb TEXT, protein TEXT)")
-        conn.execute("CREATE TABLE master_branches_db (name TEXT PRIMARY KEY, level TEXT, district TEXT, traffic TEXT, avg_covers INTEGER, base_rice_g INTEGER)")
-        conn.execute("CREATE TABLE master_rewards_db (reward_id TEXT PRIMARY KEY, tier_name TEXT, max_waste_ratio REAL, reward_type TEXT, reward_description TEXT, is_active INTEGER)")
-        conn.execute("CREATE TABLE cloud_config_db (key TEXT PRIMARY KEY, url TEXT)")
-
-        conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_dishes_db (
+                dish_id TEXT PRIMARY KEY, name TEXT, main_carb TEXT, protein TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_branches_db (
+                name TEXT PRIMARY KEY, level TEXT, district TEXT, traffic TEXT, avg_covers INTEGER, base_rice_g INTEGER
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS master_rewards_db (
+                reward_id TEXT PRIMARY KEY, tier_name TEXT, max_waste_ratio REAL, reward_type TEXT, reward_description TEXT, is_active INTEGER
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS cloud_config_db (
+                key TEXT PRIMARY KEY, url TEXT
+            )
+        """)
+        conn.execute("INSERT OR IGNORE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
         
-        init_dishes = [
-            ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
-            ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
-            ("D03", "滑蛋蝦仁飯 (Scrambled Egg Shrimp Rice)", "白米飯", "滑蛋蝦仁"),
-            ("D04", "香辣肉燥肉餅飯 (Minced Pork Patty Rice)", "白米飯", "煎肉餅"),
-            ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
-            ("D06", "車仔麵 (Kart Noodle)", "中式麵條", "牛腩/魚蛋/蘿蔔")
-        ]
-        conn.executemany("INSERT OR REPLACE INTO master_dishes_db VALUES (?, ?, ?, ?)", init_dishes)
+        # 預設資料初始化
+        count = conn.execute("SELECT COUNT(*) FROM master_dishes_db").fetchone()[0]
+        if count == 0:
+            init_dishes = [
+                ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
+                ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
+                ("D03", "滑蛋蝦仁飯 (Scrambled Egg Shrimp Rice)", "白米飯", "滑蛋蝦仁"),
+                ("D04", "香辣肉燥肉餅飯 (Minced Pork Patty Rice)", "白米飯", "煎肉餅"),
+                ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
+                ("D06", "車仔麵 (Kart Noodle)", "中式麵條", "牛腩/魚蛋/蘿蔔")
+            ]
+            conn.executemany("INSERT OR REPLACE INTO master_dishes_db VALUES (?, ?, ?, ?)", init_dishes)
 
-        init_branches = [
-            ("中環威靈頓街店", "Level A (商業核心區 / CBD)", "中西區", "白領上班族為主", 1200, 240),
-            ("沙田新城市廣場店", "Level B (住宅商場 / Residential)", "沙田區", "家庭客與長者", 1500, 260)
-        ]
-        conn.executemany("INSERT OR REPLACE INTO master_branches_db VALUES (?, ?, ?, ?, ?, ?)", init_branches)
+        branch_count = conn.execute("SELECT COUNT(*) FROM master_branches_db").fetchone()[0]
+        if branch_count == 0:
+            init_branches = [
+                ("中環威靈頓街店", "Level A (商業核心區 / CBD)", "中西區", "白領上班族為主", 1200, 240),
+                ("沙田新城市廣場店", "Level B (住宅商場 / Residential)", "沙田區", "家庭客與長者", 1500, 260)
+            ]
+            conn.executemany("INSERT OR REPLACE INTO master_branches_db VALUES (?, ?, ?, ?, ?, ?)", init_branches)
 
-        init_rewards = [
-            ("R01", "極致光盤獎 (Ultra Clean)", 10.0, "Coupon + Points", "【$3 堂食現金券】+【50 綠色積分】", 1),
-            ("R02", "達標惜食獎 (Standard Clean)", 20.0, "Coupon", "【$2 堂食電子券】+【20 綠色積分】", 1),
-            ("R03", "支持環保獎 (Green Return)", 100.0, "Points", "【10 綠色環保積分】", 1)
-        ]
-        conn.executemany("INSERT OR REPLACE INTO master_rewards_db VALUES (?, ?, ?, ?, ?, ?)", init_rewards)
+        reward_count = conn.execute("SELECT COUNT(*) FROM master_rewards_db").fetchone()[0]
+        if reward_count == 0:
+            init_rewards = [
+                ("R01", "極致光盤獎 (Ultra Clean)", 5.0, "Coupon + Points", "【$3 堂食現金券】+【50 綠色積分】", 1),
+                ("R02", "接近光盤獎 (Almost Clean)", 14.0, "Coupon", "【$2 堂食電子券】+【20 綠色積分】", 1),
+                ("R03", "支持環保獎 (Green Return)", 100.0, "Points", "【10 綠色環保積分】", 1)
+            ]
+            conn.executemany("INSERT OR REPLACE INTO master_rewards_db VALUES (?, ?, ?, ?, ?, ?)", init_rewards)
 
 def get_cloud_urls():
     urls = {"base_url": DEFAULT_BASE_GDRIVE_URL}
@@ -179,26 +193,21 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dual-Model Collaborative AI Engine (三元件精準解構)
+# 5. Single-Model Optimized CLIP AI Engine (省記憶體三元件解析)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入雙核心 AI 引擎 (SWIN + CLIP) 於裝置: {dev.upper()}...")
+    print(f"📥 正在載入輕量化 CLIP 引擎於裝置: {dev.upper()}...")
     
-    swin_path = "kktlau115/trayzero-frozen-swin-model"
-    swin_processor = AutoImageProcessor.from_pretrained(swin_path)
-    swin_model = AutoModelForImageClassification.from_pretrained(swin_path).to(dev)
-    swin_model.eval()
-
     clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
     clip_model = CLIPModel.from_pretrained(clip_path).to(dev)
     clip_model.eval()
     
     return {
-        "swin_processor": swin_processor, "swin_model": swin_model,
-        "clip_processor": clip_processor, "clip_model": clip_model,
+        "clip_processor": clip_processor, 
+        "clip_model": clip_model,
         "device": dev
     }
 
@@ -213,34 +222,27 @@ def compute_clip_similarity(image, text_labels, engine):
 def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     image_rgb = image.convert("RGB")
     width, height = image_rgb.size
-    dev = engine["device"]
 
-    # 1. SWIN 像素殘留迴歸
-    swin_inputs = engine["swin_processor"](images=image_rgb, return_tensors="pt").to(dev)
-    with torch.no_grad():
-        swin_out = engine["swin_model"](**swin_inputs)
-        raw_pred = swin_out.logits.item() if swin_out.logits.numel() == 1 else swin_out.logits[0][0].item()
-        swin_ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
-        swin_ratio = max(0.0, min(1.0, swin_ratio))
-
-    # 2. CLIP 三元件獨立特徵掃描 (Carb, Protein, Veg)
     carb_labels = ["clean empty bowl with no noodles or rice", "half eaten noodles or rice", "full untouched noodles or rice bowl"]
     protein_labels = ["no meat or fish balls left", "half eaten meat or fish balls", "full untouched meat or fish balls"]
     veg_labels = ["no green vegetables left", "some leftover green vegetables", "fresh green vegetables on top"]
+    state_labels = ["full untouched meal on a plate", "half eaten food", "clean empty dish zero waste", "crumpled tissue paper or waste on tray"]
 
     carb_probs = compute_clip_similarity(image_rgb, carb_labels, engine)
     protein_probs = compute_clip_similarity(image_rgb, protein_labels, engine)
     veg_probs = compute_clip_similarity(image_rgb, veg_labels, engine)
+    state_probs = compute_clip_similarity(image_rgb, state_labels, engine)
+
+    state_idx = int(np.argmax(state_probs))
 
     carb_ratio = float(carb_probs[1] * 0.5 + carb_probs[2] * 0.95)
     protein_ratio = float(protein_probs[1] * 0.5 + protein_probs[2] * 0.95)
     veg_ratio = float(veg_probs[1] * 0.5 + veg_probs[2] * 0.95)
 
-    # 綜合融合計算總殘食率 (主食 35% + 蛋白質 35% + 蔬菜 10% + SWIN 20%)
-    ratio = float((carb_ratio * 0.35) + (protein_ratio * 0.35) + (veg_ratio * 0.1) + (swin_ratio * 0.2))
+    ratio = float((carb_ratio * 0.4) + (protein_ratio * 0.4) + (veg_ratio * 0.2))
     ratio = max(0.0, min(1.0, ratio))
 
-    # 🌟 全新升級的 6 級精細化 Grouping 邏輯 (5%以下光盤，6-14%接近光盤)
+    # 🌟 6 級精細化分級門檻 (5%以下光盤，6-14%接近光盤)
     if ratio >= 0.90:
         primary_cat = "完整未動餐點 (90-100% Untouched)"
         accent_color = "#DC2626"
@@ -307,7 +309,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
     }
 
 # ==============================================================================
-# 7. Mode Renderers
+# 7. Mode Renderers (含修復完成的 Mode 2 營運大盤)
 # ==============================================================================
 def render_header():
     st.markdown("""
@@ -346,7 +348,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 SWIN + CLIP 三元件精細化引擎正在進行審計..."):
+                with st.spinner("🚀 CLIP 三元件精細化引擎正在進行審計..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -391,11 +393,26 @@ def render_mode1(engine, modules):
                     st.caption(f"• **{itm['分類項目 Category']}** (置信度: {itm['置信度 Confidence']}) - 估算: **{itm['佔比 Coverage']}**")
 
 def render_mode2(engine, modules):
-    st.markdown("### 📊 總部即時營運大盤")
+    st.markdown("### 📊 總部即時營運大盤與會員客群數據中心")
     df_raw = get_records()
     if df_raw.empty:
-        st.markdown('<div class="empty-state-box">📭 尚無審計數據</div>', unsafe_allow_html=True)
+        st.markdown('<div class="empty-state-box">📭 目前尚無審計數據，請先至 Mode 1 進行餐盤掃描。</div>', unsafe_allow_html=True)
         return
+
+    # 營運指標卡片
+    n = len(df_raw)
+    avg_w = df_raw["waste_ratio"].mean()
+    tot_hkd = df_raw["cost_waste_hkd"].sum()
+    tot_co2 = df_raw["co2_emission_kg"].sum()
+
+    k1, k2, k3, k4 = st.columns(4)
+    with k1: st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">審計樣本盤數</div><div class="pos-metric-val">{n}</div></div>', unsafe_allow_html=True)
+    with k2: st.markdown(f'<div class="pos-metric-card amber-glow"><div class="pos-metric-label">平均殘食率</div><div class="pos-metric-val">{avg_w:.1f}%</div></div>', unsafe_allow_html=True)
+    with k3: st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">食材損耗總額</div><div class="pos-metric-val">HK${tot_hkd:,.1f}</div></div>', unsafe_allow_html=True)
+    with k4: st.markdown(f'<div class="pos-metric-card"><div class="pos-metric-label">累計碳排放</div><div class="pos-metric-val">{tot_co2:.2f} kg</div></div>', unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.markdown("##### 📋 詳細審計記錄流水帳 (Audit Logs)")
     st.dataframe(df_raw, use_container_width=True)
 
 def render_mode3():

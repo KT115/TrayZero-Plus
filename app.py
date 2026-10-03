@@ -466,21 +466,19 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dual-Model Collaborative AI Engine (SWIN + CLIP 分工協作)
+# 5. Dual-Model Collaborative AI Engine (SWIN + CLIP)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"📥 正在載入雙核心 AI 引擎 (SWIN + CLIP) 於裝置: {dev.upper()}...")
     
-    # 1. 載入 SWIN 迴歸模型
     swin_path = "kktlau115/trayzero-frozen-swin-model"
     swin_processor = AutoImageProcessor.from_pretrained(swin_path)
     swin_model = AutoModelForImageClassification.from_pretrained(swin_path).to(dev)
     swin_model.eval()
 
-    # 2. 載入微調版 CLIP 模型
-    clip_path = "kktlau115/clip-food101-finetuned"
+    clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
     clip_model = CLIPModel.from_pretrained(clip_path).to(dev)
     clip_model.eval()
@@ -504,7 +502,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     width, height = image_rgb.size
     dev = engine["device"]
 
-    # 🤝 模型 1 分工：由 SWIN 模型計算基礎數值迴歸（殘食比例）
     swin_inputs = engine["swin_processor"](images=image_rgb, return_tensors="pt").to(dev)
     with torch.no_grad():
         swin_out = engine["swin_model"](**swin_inputs)
@@ -512,7 +509,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         swin_ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
         swin_ratio = max(0.0, min(1.0, swin_ratio))
 
-    # 🤝 模型 2 分工：由微調版 CLIP 負責語意理解、元件拆解與防呆狀態判斷
     carb_labels = ["a plate with white rice or fried rice", "Chinese noodles or spaghetti", "clean empty bowl"]
     protein_labels = ["thick pork chop or beef brisket", "fried meat patty or chicken", "no meat left"]
     state_labels = ["full untouched meal on a plate", "half eaten food", "clean empty dish zero waste", "crumpled tissue paper or waste on tray"]
@@ -523,7 +519,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
 
     state_idx = int(np.argmax(state_probs))
 
-    # 決策融合 (Ensemble Decision)
     if state_idx == 0:  # Untouched / Full
         ratio = 0.95
         primary_cat = "完整未動餐點 (未食用浪費)"
@@ -536,7 +531,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         ratio = 0.0
         primary_cat = "偵測到桌面廢棄物/紙巾"
         accent_color = "#64748B"
-    else:  # 結合 SWIN 的數值迴歸與 CLIP 的語意判斷進行加權融合
+    else:  
         ratio = float((swin_ratio * 0.6) + (0.5 * 0.4))
         ratio = max(0.0, min(1.0, ratio))
         primary_cat = "主食與主菜殘留 (SWIN+CLIP 融合運算)"
@@ -613,39 +608,48 @@ def render_mode1(engine, modules):
         
         active_member_id = "STAFF"
         if modules.get("mod4", True):
-            raw_id = st.text_input("大家樂 Club 100 會員卡號 / 手機號碼 (選填)", placeholder="例: C100-8801")
+            raw_id = st.text_input("大家樂 Club 100 會員卡號 / 手機號碼 (選填)", placeholder="例: C100-8801", key="input_member_id_widget")
             active_member_id = raw_id.strip() if raw_id.strip() else "STAFF"
 
-        auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Dual-Model Pipeline)", value=True)
-        up = st.file_uploader("上傳餐盤相片 (Upload Image)", type=["jpg", "png", "jpeg"])
+        auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Dual-Model Pipeline)", value=True, key="chk_auto_dish")
+        
+        # 🌟 修正無限迴圈：使用上傳元件搭配 session_state 紀錄檔案 Hash
+        up = st.file_uploader("上傳餐盤相片 (Upload Image)", type=["jpg", "png", "jpeg"], key="tray_file_uploader_secure")
 
         if up is not None:
-            img_cap = Image.open(up).convert("RGB")
-            with st.spinner("🚀 SWIN + CLIP 雙模型正在協同進行深度餐盤審計..."):
-                candidate_names = df_d["name"].tolist()
-                sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
-
-                anno_img, items, ratio, primary_cat, _ = detect_tray(img_cap, engine, selected_dish=sel_dish)
-
-                loss_hkd = round(ratio * 25 * 0.45, 1) if ratio > 0 else 0.0
-                now = datetime.datetime.now()
-                waste_pct = round(ratio * 100, 1)
+            img_bytes = up.getvalue()
+            current_file_hash = hash(img_bytes)
+            
+            # 只有當上傳了「新照片」時，才執行審計並呼叫 rerun
+            if current_file_hash != st.session_state.get("processed_file_hash"):
+                st.session_state["processed_file_hash"] = current_file_hash
+                img_cap = Image.open(up).convert("RGB")
                 
-                reward_msg = " • ".join(evaluate_customer_rewards(waste_pct)) if modules.get("mod4", True) and active_member_id != "STAFF" else "員工還盤完成"
+                with st.spinner("🚀 SWIN + CLIP 雙模型正在協同進行深度餐盤審計..."):
+                    candidate_names = df_d["name"].tolist()
+                    sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
-                save_record({
-                    "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), "audit_date": now.strftime("%Y-%m-%d"),
-                    "audit_month": now.strftime("%Y-%m"), "branch_name": b_name, "member_id": active_member_id,
-                    "dish_name": sel_dish, "primary_waste": primary_cat, "waste_ratio": waste_pct,
-                    "cost_waste_hkd": loss_hkd, "co2_emission_kg": round(loss_hkd * 0.12, 2), "reward_issued": reward_msg
-                })
+                    anno_img, items, ratio, primary_cat, _ = detect_tray(img_cap, engine, selected_dish=sel_dish)
 
-                st.session_state["latest"] = {
-                    "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
-                    "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
-                }
-                st.toast("✅ 雙模型協同審計數據已同步！")
-                st.rerun()
+                    loss_hkd = round(ratio * 25 * 0.45, 1) if ratio > 0 else 0.0
+                    now = datetime.datetime.now()
+                    waste_pct = round(ratio * 100, 1)
+                    
+                    reward_msg = " • ".join(evaluate_customer_rewards(waste_pct)) if modules.get("mod4", True) and active_member_id != "STAFF" else "員工還盤完成"
+
+                    save_record({
+                        "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), "audit_date": now.strftime("%Y-%m-%d"),
+                        "audit_month": now.strftime("%Y-%m"), "branch_name": b_name, "member_id": active_member_id,
+                        "dish_name": sel_dish, "primary_waste": primary_cat, "waste_ratio": waste_pct,
+                        "cost_waste_hkd": loss_hkd, "co2_emission_kg": round(loss_hkd * 0.12, 2), "reward_issued": reward_msg
+                    })
+
+                    st.session_state["latest"] = {
+                        "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
+                        "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
+                    }
+                    st.toast("✅ 雙模型協同審計數據已同步！")
+                    st.rerun()
 
     with c2:
         st.markdown("#### 🎯 即時判斷結果與獎勵 (Live Ticket)")
@@ -653,7 +657,7 @@ def render_mode1(engine, modules):
         if not latest:
             st.info("💡 請上傳餐盤相片以執行審計。")
         else:
-            st.image(latest["img"], caption=f"🍽️️ {latest['dish']} ({latest['conf']:.1%}) • {latest['time']}")
+            st.image(latest["img"], caption=f"🍽 {latest['dish']} ({latest['conf']:.1%}) • {latest['time']}")
             
             k1, k2, k3 = st.columns(3)
             with k1: st.markdown(f'<div class="pos-metric-card amber-glow"><div class="pos-metric-label">殘食佔比</div><div class="pos-metric-val">{latest["ratio"]*100:.1f}%</div></div>', unsafe_allow_html=True)
@@ -677,8 +681,8 @@ def render_mode3():
     st.markdown("### ⚙️ 基礎資料管理")
     tab_cloud, tab1, tab2, tab3 = st.tabs(["☁️ 雲端連線", "🏢 分店管理", "🍱 菜單管理", "🎁 獎勵規則"])
     with tab_cloud:
-        c_base = st.text_input("Google Drive 主發佈 CSV 網址", value=get_cloud_urls().get("base_url", DEFAULT_BASE_GDRIVE_URL))
-        if st.button("💾 儲存並啟用連線"):
+        c_base = st.text_input("Google Drive 主發佈 CSV 網址", value=get_cloud_urls().get("base_url", DEFAULT_BASE_GDRIVE_URL), key="input_gdrive_url_widget")
+        if st.button("💾 儲存並啟用連線", key="btn_save_gdrive"):
             save_cloud_urls({"base_url": c_base})
             st.success("✅ 設定已儲存！")
     with tab1: st.dataframe(get_live_branches(), use_container_width=True)
@@ -686,7 +690,7 @@ def render_mode3():
     with tab3: st.dataframe(get_live_rewards(), use_container_width=True)
 
 # ==============================================================================
-# 8. Application Entry Point (含完整側邊欄模組開關)
+# 8. Application Entry Point
 # ==============================================================================
 def main():
     inject_safe_css()
@@ -706,14 +710,14 @@ def main():
     """, unsafe_allow_html=True)
 
     st.sidebar.markdown("##### 觸控模式選擇 (TOUCH NAVIGATION)")
-    mode = st.sidebar.radio("模式選擇導航", ["Mode 1: 前線回收感應台", "Mode 2: 總部即時營運大盤", "Mode 3: 菜單與獎勵配置"], label_visibility="collapsed")
+    mode = st.sidebar.radio("模式選擇導航", ["Mode 1: 前線回收感應台", "Mode 2: 總部即時營運大盤", "Mode 3: 菜單與獎勵配置"], label_visibility="collapsed", key="sidebar_mode_radio")
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("##### 企業模組狀態 (MODULES)")
-    mod_1 = st.sidebar.checkbox("M1: 營運監控 (Ops Core)", value=True)
-    mod_2 = st.sidebar.checkbox("M2: 深度分析 (BI Analytics)", value=True)
-    mod_3 = st.sidebar.checkbox("M3: 精準營銷 (Smart POS)", value=True)
-    mod_4 = st.sidebar.checkbox("M4: 會員閉環 (Loyalty Loop)", value=True)
+    mod_1 = st.sidebar.checkbox("M1: 營運監控 (Ops Core)", value=True, key="chk_mod_1")
+    mod_2 = st.sidebar.checkbox("M2: 深度分析 (BI Analytics)", value=True, key="chk_mod_2")
+    mod_3 = st.sidebar.checkbox("M3: 精準營銷 (Smart POS)", value=True, key="chk_mod_3")
+    mod_4 = st.sidebar.checkbox("M4: 會員閉環 (Loyalty Loop)", value=True, key="chk_mod_4")
 
     active_modules = {"mod1": mod_1, "mod2": mod_2, "mod3": mod_3, "mod4": mod_4}
 

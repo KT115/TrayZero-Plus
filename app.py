@@ -194,12 +194,12 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dual-Model Collaborative AI Engine (SWIN + CLIP 錨點校準版)
+# 5. Dual-Model Collaborative AI Engine (回歸 Swin 像素迴歸主導)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入 Swin + CLIP 錨點協同引擎於裝置: {dev.upper()}...")
+    print(f"📥 正在載入 Swin + CLIP 協同引擎於裝置: {dev.upper()}...")
     
     swin_path = "kktlau115/trayzero-frozen-swin-model"
     swin_processor = AutoImageProcessor.from_pretrained(swin_path)
@@ -230,7 +230,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     width, height = image_rgb.size
     dev = engine["device"]
 
-    # 1. SWIN 像素殘留迴歸
+    # 1. Swin 模型像素迴歸（核心數值來源）
     swin_inputs = engine["swin_processor"](images=image_rgb, return_tensors="pt").to(dev)
     with torch.no_grad():
         swin_out = engine["swin_model"](**swin_inputs)
@@ -238,9 +238,9 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         swin_ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
         swin_ratio = max(0.0, min(1.0, swin_ratio))
 
-    # 2. CLIP 語意狀態辨識 (作為強效錨點校準)
+    # 2. CLIP 狀態輔助檢查 (只保留光盤防呆，其餘全權交由 Swin 像素迴歸)
     state_labels = [
-        "full untouched meal on a plate with complete food", 
+        "full untouched meal on a plate", 
         "half eaten food", 
         "clean empty dish zero waste", 
         "crumpled tissue paper or waste on tray"
@@ -249,24 +249,18 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
     state_idx = int(np.argmax(state_probs))
     state_conf = float(state_probs[state_idx])
 
-    # 🌟 引入強效錨點校準邏輯 (解決 Swin 數值卡在中間的盲點)
-    if state_idx == 0 and state_conf > 0.45:  # 完整未動錨點
-        ratio = 0.95 + (state_conf * 0.04)
-        carb_ratio = 0.96
-        protein_ratio = 0.94
-        veg_ratio = 0.93
-    elif state_idx == 2 and state_conf > 0.40: # 光盤錨點
+    # 🌟 徹底拔除盲目硬鎖定，讓 Swin 的像素迴歸數值真實反映「吃了一半」或「未動」
+    if state_idx == 2 and state_conf > 0.45:  # 只有真正光盤時才強制歸零
         ratio = 0.02
-        carb_ratio = 0.0
-        protein_ratio = 0.0
-        veg_ratio = 0.0
-    else:  # 食用過半或一般殘留交由 Swin 迴歸
-        ratio = swin_ratio
-        carb_ratio = max(0.0, min(1.0, ratio * 1.05))
-        protein_ratio = max(0.0, min(1.0, ratio * 0.95))
-        veg_ratio = max(0.0, min(1.0, ratio * 0.90))
+    else:
+        ratio = swin_ratio  # 完全信任 Swin 模型的像素迴歸結果
 
     ratio = max(0.0, min(1.0, ratio))
+
+    # 三元件細粒度佔比根據實際 ratio 合理拆解
+    carb_ratio = max(0.0, min(1.0, ratio * 1.05))
+    protein_ratio = max(0.0, min(1.0, ratio * 0.95))
+    veg_ratio = max(0.0, min(1.0, ratio * 0.90))
 
     # 🌟 精細化 6 級 Grouping 門檻 (5%以下光盤，6-14%接近光盤)
     if ratio >= 0.90:
@@ -340,7 +334,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Anchor-Calibrated Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Swin Regression Master Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -374,7 +368,7 @@ def render_mode1(engine, modules):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 錨點校準引擎正在計算精確殘食率..."):
+                with st.spinner("🚀 Swin 模型正在計算客觀像素迴歸比例..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -397,7 +391,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ 錨點校準審計數據已同步！")
+                    st.toast("✅ Swin 迴歸審計數據已同步！")
                     st.rerun()
 
     with c2:

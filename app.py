@@ -33,8 +33,11 @@ DISH_FILE = os.path.join(BASE_DIR, "master_dishes.csv")
 REWARD_FILE = os.path.join(BASE_DIR, "master_rewards.csv")
 SEED_AUDIT_FILE = os.path.join(BASE_DIR, "seed_audit_logs.csv")
 DB_FILE = os.path.join(BASE_DIR, "trayzero_audit.db")
+DISH_IMG_DIR = os.path.join(BASE_DIR, "dish_references")
 LOGO_FILE_PNG = os.path.join(BASE_DIR, "CDC_810.png")
 LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
+
+os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
 DEFAULT_BASE_GDRIVE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSloK2WPNFd8HPY4RfL2rNhwhk_kD12H0q09nDcrlMrx5O_zqslCOi1TPAXvlHtnP1FWxyJxGgG99QX/pub?output=csv"
 
@@ -48,51 +51,202 @@ def inject_safe_css():
             --background-color: #F8FAFC !important;
             --secondary-background-color: #FFFFFF !important;
         }
+
         .stApp {
             background-color: #F8FAFC !important;
             color: #0F172A !important;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
         }
+
         .main .block-container {
             padding-top: 1.2rem !important;
             padding-bottom: 3rem !important;
+            color: #0F172A !important;
         }
+
         .pos-header-banner {
             background: linear-gradient(135deg, #C2301A 0%, #D95D1A 48%, #D87B18 100%) !important;
             border-radius: 14px !important;
             padding: 16px 24px !important;
             margin-bottom: 22px !important;
             box-shadow: 0 4px 14px rgba(194, 48, 26, 0.22) !important;
-            color: white !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            display: flex !important;
+            align-items: center !important;
         }
         .pos-header-title {
             color: #FFFFFF !important;
             font-size: 1.45rem !important;
             font-weight: 900 !important;
             margin: 0 !important;
+            letter-spacing: 0.02em !important;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
+
         [data-testid="stSidebar"] {
             background-color: #FFFFFF !important;
             border-right: 1.5px solid #E2E8F0 !important;
+            padding-top: 1rem !important;
         }
-        .pos-metric-card {
-            background: #FFFFFF !important;
-            border-radius: 12px;
-            padding: 14px 16px;
-            border: 1.5px solid #E2E8F0;
-            text-align: center;
+        [data-testid="stSidebar"] [data-testid="stImage"] {
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            margin-bottom: 16px !important;
+            width: 100% !important;
+            text-align: center !important;
         }
-        .pos-metric-card.amber-glow { background: #FFFBEB !important; border-color: #FDE68A !important; }
-        .pos-metric-card.green-glow { background: #F0FDF4 !important; border-color: #86EFAC !important; }
-        .pos-metric-label { font-size: 0.72rem; font-weight: 800; color: #64748B !important; text-transform: uppercase; }
-        .pos-metric-val { font-size: 1.7rem; font-weight: 900; line-height: 1.1; }
+        [data-testid="stSidebar"] [data-testid="stImage"] > img {
+            margin-left: auto !important;
+            margin-right: auto !important;
+            display: block !important;
+            max-width: 175px !important;
+        }
+
+        label[data-testid="stWidgetLabel"],
+        div[data-testid="stWidgetLabel"] label,
+        div[data-testid="stWidgetLabel"] p,
+        div[data-testid="stWidgetLabel"] span {
+            color: #0F172A !important;
+            font-size: 0.95rem !important;
+            font-weight: 800 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        div[data-testid="stRadio"] [role="radiogroup"] label,
+        div[data-testid="stRadio"] [role="radiogroup"] label p,
+        div[data-testid="stRadio"] [role="radiogroup"] label span,
+        div[data-testid="stCheckbox"] label p,
+        div[data-testid="stCheckbox"] label span {
+            color: #0F172A !important;
+            font-size: 0.92rem !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] {
+            background: transparent !important;
+            padding: 10px 18px !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] p,
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"] span {
+            color: #475569 !important;
+            font-size: 0.95rem !important;
+            font-weight: 700 !important;
+            opacity: 1 !important;
+            visibility: visible !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] {
+            border-bottom: 3px solid #D95D1A !important;
+        }
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] p,
+        div[data-baseweb="tab-list"] button[data-baseweb="tab"][aria-selected="true"] span {
+            color: #C2301A !important;
+            font-weight: 900 !important;
+        }
+
+        input[type="text"], 
+        input[type="number"],
+        div[data-baseweb="input"] input,
+        div[data-baseweb="select"] div {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border-color: #CBD5E1 !important;
+            font-weight: 700 !important;
+            border-radius: 8px !important;
+        }
+        input::placeholder {
+            color: #94A3B8 !important;
+            font-weight: 600 !important;
+        }
+
         .pos-coupon-card {
             background: #FFFBEB !important;
             border: 2px dashed #D97706 !important;
             border-radius: 12px;
             padding: 16px 18px;
             margin-bottom: 16px;
+            box-shadow: 0 2px 6px rgba(217, 119, 6, 0.05);
         }
+        .pos-coupon-header {
+            font-size: 0.85rem;
+            font-weight: 900;
+            color: #D97706;
+            margin-bottom: 4px;
+        }
+        .pos-coupon-value {
+            font-size: 1.22rem;
+            font-weight: 900;
+            color: #0F172A;
+            margin-bottom: 4px;
+        }
+        .pos-coupon-desc {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: #78350F;
+        }
+        .pos-coupon-badge {
+            display: inline-block;
+            background: #D97706;
+            color: #FFFFFF;
+            font-size: 0.75rem;
+            font-weight: 900;
+            padding: 4px 10px;
+            border-radius: 6px;
+            margin-top: 8px;
+        }
+
+        .pos-metric-card {
+            background: #FFFFFF !important;
+            border-radius: 12px;
+            padding: 14px 16px;
+            border: 1.5px solid #E2E8F0;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+            text-align: center;
+        }
+        .pos-metric-card.amber-glow {
+            background: #FFFBEB !important;
+            border-color: #FDE68A !important;
+        }
+        .pos-metric-card.green-glow {
+            background: #F0FDF4 !important;
+            border-color: #86EFAC !important;
+        }
+        .pos-metric-label {
+            font-size: 0.72rem;
+            font-weight: 800;
+            color: #64748B !important;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .pos-metric-val {
+            font-size: 1.7rem;
+            font-weight: 900;
+            line-height: 1.1;
+        }
+
+        .chart-box {
+            background: #FFFFFF;
+            border-radius: 12px;
+            padding: 18px 20px;
+            border: 1.5px solid #E2E8F0;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
+            margin-bottom: 16px;
+        }
+        .chart-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: #0F172A;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
         .pos-directive-card {
             border-radius: 10px;
             padding: 14px 18px;
@@ -100,7 +254,17 @@ def inject_safe_css():
             background: #FFFFFF !important;
             border: 1px solid #E2E8F0;
             border-left: 5px solid #DC2626 !important;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.03);
         }
+
+        .export-control-box {
+            background: #FFFFFF;
+            border: 1.5px solid #CBD5E1;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+        }
+
         .empty-state-box {
             background: #FFFFFF;
             border: 2px dashed #CBD5E1;
@@ -108,6 +272,23 @@ def inject_safe_css():
             padding: 40px;
             text-align: center;
             color: #64748B;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+
+        button[kind="primary"] {
+            background-color: #D97706 !important;
+            color: #FFFFFF !important;
+            font-weight: 800 !important;
+            border-radius: 8px !important;
+            border: none !important;
+        }
+        button[kind="secondary"] {
+            background-color: #FFFFFF !important;
+            color: #0F172A !important;
+            border: 1.5px solid #CBD5E1 !important;
+            font-weight: 800 !important;
+            border-radius: 8px !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -142,6 +323,7 @@ def init_db():
                 reward_issued TEXT
             )
         """)
+
         conn.execute("""
             CREATE TABLE master_dishes_db (
                 dish_id TEXT PRIMARY KEY,
@@ -150,6 +332,7 @@ def init_db():
                 protein TEXT
             )
         """)
+
         conn.execute("""
             CREATE TABLE master_branches_db (
                 name TEXT PRIMARY KEY,
@@ -160,6 +343,7 @@ def init_db():
                 base_rice_g INTEGER
             )
         """)
+
         conn.execute("""
             CREATE TABLE master_rewards_db (
                 reward_id TEXT PRIMARY KEY,
@@ -170,14 +354,19 @@ def init_db():
                 is_active INTEGER
             )
         """)
+
         conn.execute("""
             CREATE TABLE cloud_config_db (
                 key TEXT PRIMARY KEY,
                 url TEXT
             )
         """)
+
         conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('base_gdrive_url', ?)", (DEFAULT_BASE_GDRIVE_URL,))
-        
+        conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('dishes_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=dishes",))
+        conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('branches_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=branches",))
+        conn.execute("INSERT OR REPLACE INTO cloud_config_db VALUES ('rewards_url', ?)", (f"{DEFAULT_BASE_GDRIVE_URL}&sheet=rewards",))
+
         init_dishes = [
             ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
             ("D02", "咖喱牛腩飯 (Curry Beef Brisket Rice)", "白米飯", "慢燉牛腩"),
@@ -217,13 +406,31 @@ def get_live_dishes():
     with db_conn() as conn:
         return pd.read_sql("SELECT dish_id, name, main_carb, protein FROM master_dishes_db", conn)
 
+def save_live_dishes(df):
+    clean_df = df.dropna(subset=["name"]).copy()
+    clean_df.to_csv(DISH_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_dishes_db", conn, if_exists="replace", index=False)
+
 def get_live_branches():
     with db_conn() as conn:
         return pd.read_sql("SELECT name, level, district, traffic, avg_covers, base_rice_g FROM master_branches_db", conn)
 
+def save_live_branches(df):
+    clean_df = df.dropna(subset=["name"]).copy()
+    clean_df.to_csv(BRANCH_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_branches_db", conn, if_exists="replace", index=False)
+
 def get_live_rewards():
     with db_conn() as conn:
         return pd.read_sql("SELECT reward_id, tier_name, max_waste_ratio, reward_type, reward_description, is_active FROM master_rewards_db", conn)
+
+def save_live_rewards(df):
+    clean_df = df.dropna(subset=["tier_name"]).copy()
+    clean_df.to_csv(REWARD_FILE, index=False, encoding="utf-8-sig")
+    with db_conn() as conn:
+        clean_df.to_sql("master_rewards_db", conn, if_exists="replace", index=False)
 
 def evaluate_customer_rewards(waste_ratio_pct):
     df_r = get_live_rewards()
@@ -259,19 +466,18 @@ def get_records():
         return df
 
 # ==============================================================================
-# 5. Dual-Model Collaborative AI Engine (防呆保護)
+# 5. Dual-Model Collaborative AI Engine (SWIN + CLIP)
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"📥 正在載入 AI 引擎於裝置: {dev.upper()}...")
+    print(f"📥 正在載入雙核心 AI 引擎 (SWIN + CLIP) 於裝置: {dev.upper()}...")
     
     swin_path = "kktlau115/trayzero-frozen-swin-model"
     swin_processor = AutoImageProcessor.from_pretrained(swin_path)
     swin_model = AutoModelForImageClassification.from_pretrained(swin_path).to(dev)
     swin_model.eval()
 
-    # 使用穩定公開的標準 CLIP 模型，避免權限或 RepositoryNotFoundError 問題
     clip_path = "openai/clip-vit-base-patch32"
     clip_processor = CLIPProcessor.from_pretrained(clip_path)
     clip_model = CLIPModel.from_pretrained(clip_path).to(dev)
@@ -303,24 +509,21 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         swin_ratio = float(1.0 / (1.0 + np.exp(-raw_pred)))
         swin_ratio = max(0.0, min(1.0, swin_ratio))
 
-    carb_state_labels = ["clean empty bowl with no rice", "half eaten rice", "full untouched rice and sauce"]
-    protein_state_labels = ["no meat left", "half eaten meat or chicken", "full untouched meat or pork chop"]
+    carb_labels = ["a plate with white rice or fried rice", "Chinese noodles or spaghetti", "clean empty bowl"]
+    protein_labels = ["thick pork chop or beef brisket", "fried meat patty or chicken", "no meat left"]
     state_labels = ["full untouched meal on a plate", "half eaten food", "clean empty dish zero waste", "crumpled tissue paper or waste on tray"]
 
-    carb_probs = compute_clip_similarity(image_rgb, carb_state_labels, engine)
-    protein_probs = compute_clip_similarity(image_rgb, protein_state_labels, engine)
+    carb_probs = compute_clip_similarity(image_rgb, carb_labels, engine)
+    protein_probs = compute_clip_similarity(image_rgb, protein_labels, engine)
     state_probs = compute_clip_similarity(image_rgb, state_labels, engine)
 
     state_idx = int(np.argmax(state_probs))
 
-    carb_ratio = float(carb_probs[1] * 0.5 + carb_probs[2] * 0.95)
-    protein_ratio = float(protein_probs[1] * 0.5 + protein_probs[2] * 0.95)
-
-    if state_idx == 0:  # Untouched
+    if state_idx == 0:  # Untouched / Full
         ratio = 0.95
         primary_cat = "完整未動餐點 (未食用浪費)"
         accent_color = "#DC2626"
-    elif state_idx == 2:  # Empty
+    elif state_idx == 2:  # Empty / Zero waste
         ratio = 0.0
         primary_cat = "光盤 Clean Plate"
         accent_color = "#10B981"
@@ -329,22 +532,22 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv=""):
         primary_cat = "偵測到桌面廢棄物/紙巾"
         accent_color = "#64748B"
     else:  
-        ratio = float((swin_ratio * 0.5) + (carb_ratio * 0.25) + (protein_ratio * 0.25))
+        ratio = float((swin_ratio * 0.6) + (0.5 * 0.4))
         ratio = max(0.0, min(1.0, ratio))
-        primary_cat = "主食與主菜殘留"
+        primary_cat = "主食與主菜殘留 (SWIN+CLIP 融合運算)"
         accent_color = "#D97706"
 
     img_draw = image.copy()
     draw = ImageDraw.Draw(img_draw)
     
     items = [
-        {"分類項目 Category": "主食 (Carb)", "置信度 Confidence": f"{carb_probs.max():.1%}", "佔比 Coverage": f"{carb_ratio*100:.1f}%"},
-        {"分類項目 Category": "蛋白質 (Protein)", "置信度 Confidence": f"{protein_probs.max():.1%}", "佔比 Coverage": f"{protein_ratio*100:.1f}%"},
+        {"分類項目 Category": "主食 (Carb)", "置信度 Confidence": f"{carb_probs.max():.1%}", "佔比 Coverage": f"{ratio*100:.1f}%"},
+        {"分類項目 Category": "蛋白質 (Protein)", "置信度 Confidence": f"{protein_probs.max():.1%}", "佔比 Coverage": f"{ratio*100:.1f}%"},
     ]
 
     box = [int(width * 0.15), int(height * 0.15), int(width * 0.85), int(height * 0.85)]
     draw.rectangle(box, outline=accent_color, width=4)
-    draw.text((box[0] + 10, box[1] + 10), f"綜合殘食率: {ratio*100:.1f}%", fill=accent_color)
+    draw.text((box[0] + 10, box[1] + 10), f"雙模型協同殘食率: {ratio*100:.1f}%", fill=accent_color)
 
     return img_draw, items, ratio, primary_cat, True
 
@@ -385,7 +588,7 @@ def analyze_member_loyalty_profile(member_id, df_all):
 def render_header():
     st.markdown("""
     <div class="pos-header-banner">
-        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Collaborative Edition)</div>
+        <div class="pos-header-title">🍽️ TrayZero+ 智能餐盤審計與會員獎勵系統 (Dual-Model Collaborative Edition)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -408,19 +611,21 @@ def render_mode1(engine, modules):
             raw_id = st.text_input("大家樂 Club 100 會員卡號 / 手機號碼 (選填)", placeholder="例: C100-8801", key="input_member_id_widget")
             active_member_id = raw_id.strip() if raw_id.strip() else "STAFF"
 
-        auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型", value=True, key="chk_auto_dish")
+        auto_dish = st.checkbox("🤖 啟用 AI 自動辨識餐點類型 (Dual-Model Pipeline)", value=True, key="chk_auto_dish")
         
+        # 🌟 修正無限迴圈：使用上傳元件搭配 session_state 紀錄檔案 Hash
         up = st.file_uploader("上傳餐盤相片 (Upload Image)", type=["jpg", "png", "jpeg"], key="tray_file_uploader_secure")
 
         if up is not None:
             img_bytes = up.getvalue()
             current_file_hash = hash(img_bytes)
             
+            # 只有當上傳了「新照片」時，才執行審計並呼叫 rerun
             if current_file_hash != st.session_state.get("processed_file_hash"):
                 st.session_state["processed_file_hash"] = current_file_hash
                 img_cap = Image.open(up).convert("RGB")
                 
-                with st.spinner("🚀 雙模型正在協同進行深度餐盤審計..."):
+                with st.spinner("🚀 SWIN + CLIP 雙模型正在協同進行深度餐盤審計..."):
                     candidate_names = df_d["name"].tolist()
                     sel_dish, dish_conf = auto_detect_dish_clip(img_cap, candidate_names, engine) if auto_dish else (candidate_names[0], 1.0)
 
@@ -443,7 +648,7 @@ def render_mode1(engine, modules):
                         "img": anno_img, "dish": sel_dish, "conf": dish_conf, "time": now.strftime("%H:%M:%S"),
                         "ratio": ratio, "cat": primary_cat, "cost": loss_hkd, "member": active_member_id, "reward": reward_msg, "items": items
                     }
-                    st.toast("✅ 審計數據已同步！")
+                    st.toast("✅ 雙模型協同審計數據已同步！")
                     st.rerun()
 
     with c2:
@@ -491,7 +696,7 @@ def main():
     inject_safe_css()
     init_db()
 
-    with st.spinner("🚀 正在載入雙核心 AI 引擎..."):
+    with st.spinner("🚀 正在載入 SWIN + CLIP 雙核心協同 AI 引擎..."):
         engine = load_ai_engine()
 
     logo_target = LOGO_FILE_PNG if os.path.exists(LOGO_FILE_PNG) else (LOGO_FILE_JPG if os.path.exists(LOGO_FILE_JPG) else None)

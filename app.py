@@ -227,7 +227,7 @@ def inject_safe_css():
             text-overflow: clip !important;
         }
 
-        /* 🌟 Mode 3 分頁標籤 (Tabs) 防隱形：非選中狀態強制深黑灰字體，選中狀態為大家樂品牌紅 */
+        /* Mode 3 分頁標籤 (Tabs) 防隱形：非選中狀態強制深黑灰字體，選中狀態為大家樂品牌紅 */
         div[data-baseweb="tab-list"] {
             gap: 8px !important;
             border-bottom: 2px solid #CBD5E1 !important;
@@ -312,7 +312,7 @@ def ensure_audit_logs_schema(conn):
     """)
     conn.commit()
     
-    # 🌟 動態欄位檢查與無損熱遷移 (徹底杜絕 sqlite3.OperationalError: table audit_logs has no column named ...)
+    # 動態欄位檢查與無損熱遷移 (徹底杜絕 sqlite3.OperationalError)
     cur.execute("PRAGMA table_info(audit_logs)")
     existing_cols = {col[1] for col in cur.fetchall()}
     expected_cols = [
@@ -514,7 +514,6 @@ def evaluate_customer_rewards(waste_ratio_pct, is_en=False):
     return ("【感謝支持減碳回收】獲得 5 綠色點數", "參與獎 (Participation)", "#6B7280")
 
 def save_record(r):
-    # 🌟 每次寫入前確保資料庫結構具有完整欄位 (杜絕所有版本不相容拋錯)
     ts_str = str(r.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     date_str = str(r.get("audit_date", ts_str.split(" ")[0] if " " in ts_str else ts_str[:10]))
     month_str = str(r.get("audit_month", date_str[:7]))
@@ -658,7 +657,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
             model_conf = 0.88
         ratio = max(0.0, min(1.0, ratio))
 
-    # 🌟 徹底移除 CLIP 暴力覆蓋殘食率的錯誤規則 (先前因 untouched 關鍵詞導致所有菜餚都被強制變為 92.0%)
     top_score = model_conf
 
     # 6 級分級標準
@@ -776,5 +774,105 @@ def render_mode1(engine, modules, is_en=False):
                     image = Image.open(uploaded_file)
                     img_id = f"up_{uploaded_file.name}_{uploaded_file.size}"
 
+            if image is not None:
+                st.success("✅ " + ("Tray photo loaded. Real-time visual audit generated on the right ➔" if is_en else "餐盤照片已成功載入，AI 審計結果已於右側即時生成 ➔"))
+            else:
+                st.info("💡 " + ("Please upload or capture a plate photo. The system will auto-audit upon ingest." if is_en else "請上傳餐盤照片，系統將自動啟動視覺審計與數據記錄。"))
+
+        with st.container(border=True):
+            st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
             if image:
-                # 🌟 依用戶明確指示：如果是上
+                auto_dish, dish_conf = auto_detect_dish_clip(image, dish_names, engine)
+                st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
+                sel_dish = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", dish_names, index=dish_names.index(auto_dish) if auto_dish in dish_names else 0)
+            else:
+                sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
+
+    with col_k2:
+        with st.container(border=True):
+            st.markdown(f"#### {'4. Deep Learning Audit & Instant Feedback' if is_en else '4. 深度學習審計與即時回饋'}")
+
+            # 避免重複刷新寫入資料庫：僅新照片執行一次推論與寫入
+            if image is not None:
+                with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
+                    annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
+                    
+                    waste_pct = round(ratio * 100, 1)
+                    now = datetime.datetime.now()
+
+                    b_row = df_b[df_b["name"] == sel_branch]
+                    base_rice = float(b_row.iloc[0]["base_rice_g"]) if not b_row.empty else 250.0
+                    b_level = b_row.iloc[0]["level"] if not b_row.empty else "Level A"
+                    
+                    waste_weight = round((base_rice + 200.0) * (waste_pct / 100.0), 1)
+                    waste_cost = round(waste_weight * 0.045, 2)
+                    waste_carbon = round(waste_weight * 0.0028, 3)
+
+                    voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
+
+                    if st.session_state.get("last_processed_img_id") != img_id:
+                        save_record({
+                            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
+                            "audit_date": now.strftime("%Y-%m-%d"),
+                            "audit_month": now.strftime("%Y-%m"),
+                            "branch_name": sel_branch, 
+                            "branch_level": b_level,
+                            "dish_name": sel_dish,
+                            "primary_waste": items[0]["Category"], 
+                            "waste_ratio": waste_pct, 
+                            "waste_weight_g": waste_weight,
+                            "cost_waste_hkd": waste_cost, 
+                            "co2_emission_kg": waste_carbon,
+                            "member_id": member_id if member_id else "ANON"
+                        })
+                        st.session_state["last_processed_img_id"] = img_id
+
+                st.image(annotated_img, caption=f"{'Visual Audit Result' if is_en else '視覺審計結果'} ({'Waste Ratio' if is_en else '殘食率'}: {waste_pct}%)", use_container_width=True)
+
+                m_col1, m_col2, m_col3 = st.columns(3)
+                with m_col1:
+                    st.metric("Waste Ratio" if is_en else "殘食百分比", f"{waste_pct}%")
+                with m_col2:
+                    st.metric("Waste Cost" if is_en else "估算浪費成本", f"HK$ {waste_cost}")
+                with m_col3:
+                    st.metric("Scope 3 CO2" if is_en else "產生碳排放", f"{waste_carbon} kg")
+
+                st.markdown(f"""
+                <div class="voucher-box">
+                    <h4 style="margin: 0 0 6px 0; color: #92400E; font-weight: 800;">🎉 {'Club 100 Reward' if is_en else 'Club 100 獎勵發放'}：{tier_name}</h4>
+                    <div style="font-size: 1.05rem; font-weight: 800; color: #B45309;">{voucher_text}</div>
+                    <div style="font-size: 0.82rem; margin-top: 5px; color: #78350F; font-weight: 600;">
+                        {'Digital coupon credited to account' if is_en else '電子券已即時存入會員帳戶'} ({member_id if member_id else ('Guest' if is_en else '訪客')})，{'redeemable at Café de Coral.' if is_en else '可於大家樂門市下次消費直接扣減。'}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # 各大食材分項佔比：進度條 + 高對比表格
+                st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比 (Macronutrient Breakdown)'}")
+                
+                c_carb, c_prot, c_veg = st.columns(3)
+                with c_carb:
+                    st.metric("🍚 " + ("Carbohydrates" if is_en else "主食澱粉"), items[0]["Coverage"])
+                    st.progress(min(1.0, float(items[0]["raw_ratio"])))
+                with c_prot:
+                    st.metric("🥩 " + ("Protein" if is_en else "蛋白質肉類"), items[1]["Coverage"])
+                    st.progress(min(1.0, float(items[1]["raw_ratio"])))
+                with c_veg:
+                    st.metric("🥦 " + ("Vegetables" if is_en else "蔬菜配菜"), items[2]["Coverage"])
+                    st.progress(min(1.0, float(items[2]["raw_ratio"])))
+
+                header_c1 = "Ingredient Category" if is_en else "食材分類項目"
+                header_c2 = "AI Confidence" if is_en else "AI 置信度"
+                header_c3 = "Residual Coverage" if is_en else "殘留面積佔比"
+
+                st.markdown(f"""
+                <div style="background: #FFFFFF; border: 1.5px solid #CBD5E1; border-radius: 8px; overflow: hidden; margin-top: 10px;">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.88rem; color: #0F172A;">
+                        <tr style="background: #F1F5F9; border-bottom: 2px solid #CBD5E1; text-align: left;">
+                            <th style="padding: 10px 14px; color: #0F172A; font-weight: 800;">{header_c1}</th>
+                            <th style="padding: 10px 14px; color: #0F172A; font-weight: 800;">{header_c2}</th>
+                            <th style="padding: 10px 14px; color: #0F172A; font-weight: 800;">{header_c3}</th>
+                        </tr>
+                        <tr style="border-bottom: 1px solid #E2E8F0;">
+                            <td style="padding: 10px 14px; font-weight: 700; color: #0F172A;">🍚 {items[0]['Category']}</td>
+                            <td

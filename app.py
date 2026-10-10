@@ -773,11 +773,6 @@ def render_mode1(engine, modules, is_en=False):
                     image = Image.open(uploaded_file)
                     img_id = f"up_{uploaded_file.name}_{uploaded_file.size}"
 
-            if image is not None:
-                st.success("✅ " + ("Tray photo loaded. Real-time visual audit generated on the right ➔" if is_en else "餐盤照片已成功載入，AI 審計結果已於右側即時生成 ➔"))
-            else:
-                st.info("💡 " + ("Please upload or capture a plate photo. The system will auto-audit upon ingest." if is_en else "請上傳餐盤照片，系統將自動啟動視覺審計與數據記錄。"))
-
         # Step 3: 菜式辨識與確認 (受 M3: Smart POS 控制)
         if modules.get("mod3", True):
             with st.container(border=True):
@@ -789,7 +784,7 @@ def render_mode1(engine, modules, is_en=False):
                 else:
                     sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
         else:
-             sel_dish = "一哥焗豬扒飯 (Baked Pork Chop Rice)" # Default fallback if mod3 is off and hidden
+             sel_dish = "一哥焗豬扒飯 (Baked Pork Chop Rice)"
 
     with col_k2:
         # Step 4: 深度學習審計與即時回饋 (受 M1: Ops Core, M2: BI Analytics, M4: Loyalty Loop 控制)
@@ -893,15 +888,12 @@ def render_mode1(engine, modules, is_en=False):
                             }
                         ])
                         st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
-                else:
-                    st.info("👉 " + ("Please upload a plate photo on the left. The system will auto-audit upon ingest." if is_en else "請於左側上傳或拍攝餐盤照片，系統將自動啟動視覺審計與智能決策。"))
 
 def render_mode2(engine, modules, is_en=False):
     st.markdown(f"### 📊 {'Mode 2: Operations HQ & ESG BI Analytics Dashboard' if is_en else 'Mode 2: 總部營運與 ESG 大數據儀表板 (Operations HQ BI)'}")
     
     df_raw = get_records()
     if df_raw.empty:
-        st.warning("⚠️ No audit records found in database. Please run Mode 1 first." if is_en else "⚠️ 目前資料庫尚無審計日誌，請先至 Mode 1 執行推論。")
         return
 
     df_b = get_live_branches()
@@ -972,7 +964,6 @@ def render_mode2(engine, modules, is_en=False):
 
     n = len(df_filtered)
     if n == 0:
-        st.warning("📭 No audit records found for the selected criteria. Try switching time period to 'All Time'." if is_en else "📭 目前選定的門市、餐點或時間區間尚無審計數據。建議切換時間維度至「全部歷史 (All Time)」。")
         return
 
     # 核心統計值
@@ -1085,7 +1076,7 @@ def render_mode2(engine, modules, is_en=False):
                 elif modules.get("mod3", True) and not modules.get("mod4", True):
                     sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項。</p>"
                 elif not modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主ড়ান্ত主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
                 else:
                     sec2_text = ""
 
@@ -1158,21 +1149,14 @@ def main():
 
     st.sidebar.markdown(f"### **{'TrayZero+ Console' if is_en else 'TrayZero+ 控制台'}**")
     st.sidebar.markdown(f"**{'Café de Coral · Smart Plate Audit' if is_en else '大家樂集團 · 智能餐盤審計'}**")
-    st.sidebar.markdown("---")
+    
+    # 🌟 Container to place Radio options ABOVE the checkboxes visually
+    mode_container = st.sidebar.container()
 
-    mode_options = [
-        "Mode 1: Frontline Return Kiosk" if is_en else "Mode 1: 門市前線收盤機 (Frontline Kiosk)",
-        "Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部 BI 大數據看板 (HQ Analytics)",
-        "Mode 3: Dynamic Master Configuration" if is_en else "Mode 3: 菜單與獎勵配置 (Dynamic Config)"
-    ]
-    mode = st.sidebar.radio("System Operation Mode" if is_en else "系統運行模式 (SYSTEM MODE)", mode_options)
-
-    with st.spinner("🚀 Loading Chained AI Pipelines..." if is_en else "🚀 正在啟動雙管線深度學習引擎 (Loading AI Engine)..."):
-        engine = load_ai_engine()
-
-    # 側邊欄企業模組狀態開關
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態 (MODULES)'}")
+    
+    # Checkboxes parsed first logically
     mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控 (Ops Core)", value=True)
     mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析 (BI Analytics)", value=True)
     mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷 (Smart POS)", value=True)
@@ -1185,8 +1169,25 @@ def main():
         "mod4": mod_4
     }
 
+    # Populate Mode Options dynamically (Hiding Mode 2 completely if M2 is turned off)
+    mode_options = [
+        "Mode 1: Frontline Return Kiosk" if is_en else "Mode 1: 門市前線收盤機 (Frontline Kiosk)"
+    ]
+    if mod_2:
+        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部 BI 大數據看板 (HQ Analytics)")
+    
+    mode_options.append("Mode 3: Dynamic Master Configuration" if is_en else "Mode 3: 菜單與獎勵配置 (Dynamic Config)")
+
+    # Render Radio button inside the container reserved above
+    mode_container.markdown("---")
+    mode = mode_container.radio("System Operation Mode" if is_en else "系統運行模式 (SYSTEM MODE)", mode_options)
+
+    with st.spinner("🚀 Loading Chained AI Pipelines..." if is_en else "🚀 正在啟動雙管線深度學習引擎 (Loading AI Engine)..."):
+        engine = load_ai_engine()
+
     render_header(active_modules, is_en=is_en)
 
+    # Route based on selected mode
     if mode.startswith("Mode 1"): 
         render_mode1(engine, active_modules, is_en=is_en)
     elif mode.startswith("Mode 2"): 

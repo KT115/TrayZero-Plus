@@ -14,7 +14,7 @@ from transformers import (
 import altair as alt
 
 # ==============================================================================
-# 0. Primary Streamlit Execution Configuration
+# 0. Primary Streamlit Execution Configuration & Translation Engine
 # ==============================================================================
 st.set_page_config(
     page_title="TrayZero+ | 智能餐盤審計與會員獎勵系統", 
@@ -23,8 +23,52 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 🌐 全局動態翻譯引擎 (Dynamic Translation Dictionary)
+def t(text, is_en):
+    if not is_en or not isinstance(text, str): 
+        return text
+    mapping = {
+        "一哥焗豬扒飯": "Baked Pork Chop Rice",
+        "焗肉醬意粉": "Baked Spaghetti Bolognese",
+        "燒味飯": "Siu Mei Rice",
+        "干炒牛河": "Fried Beef Noodles",
+        "中環威靈頓街店": "Central Wellington St. Branch",
+        "沙田新城市廣場店": "Shatin New Town Plaza Branch",
+        "香港科技大學店": "HKUST Campus Branch",
+        "香港科技大學店 (HKUST)": "HKUST Campus Branch",
+        "將軍澳 Popcorn 店": "TKO Popcorn Branch",
+        "極致光盤獎": "Ultra Clean Plate",
+        "達標惜食獎": "Standard Clean Plate",
+        "支持環保獎": "Green Return",
+        "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】": "[$3 Cash Voucher] + [50 Green Points] + [Half-price Iced Lemon Tea]",
+        "【$2 堂食電子券】+【20 綠色積分】": "[$2 e-Voucher] + [20 Green Points]",
+        "【10 綠色環保積分】": "[10 Green Points]",
+        "白米飯": "White Rice",
+        "意大利麵": "Spaghetti",
+        "中式麵條": "Chinese Noodles",
+        "焗厚切豬扒": "Baked Thick-cut Pork Chop",
+        "慢燉牛肉醬": "Slow-cooked Bolognese",
+        "燒味": "Roasted Meat",
+        "牛肉": "Beef",
+        "中西區": "Central and Western",
+        "沙田區": "Sha Tin",
+        "西貢區": "Sai Kung",
+        "主食澱粉": "Carbohydrates",
+        "蛋白質肉類": "Protein",
+        "蔬菜配菜": "Vegetables",
+        "主食白飯 (Carb)": "Carbohydrates",
+        "Level A": "Level A (CBD)",
+        "Level B": "Level B (Residential)",
+        "Level C": "Level C (Campus)",
+        "白領上班族為主，午市尖峰翻檯率極高": "Office workers, high table turnover at lunch",
+        "家庭客、長者與週末休閒客群": "Families, elderly, weekend leisure",
+        "學生、教職員，運動量及食量顯著較大": "Students, staff, larger portions needed",
+        "家庭客及換乘鐵路客流": "Families, transit commuters"
+    }
+    return mapping.get(text, text)
+
 # ==============================================================================
-# 1. Global Paths & Fast-Casual POS Enterprise CSS Theme (高對比自適應主題)
+# 1. Global Paths & Fast-Casual POS Enterprise CSS Theme
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
@@ -41,7 +85,6 @@ os.makedirs(DISH_IMG_DIR, exist_ok=True)
 def inject_safe_css():
     st.markdown("""
     <style>
-        /* 強制全局高對比淺色基調，徹底消滅深色模式導致的文字隱形 */
         :root {
             --cdc-red: #DC2626 !important;
             --cdc-amber: #D97706 !important;
@@ -59,8 +102,6 @@ def inject_safe_css():
             padding-bottom: 3rem !important;
             color: #0F172A !important;
         }
-        
-        /* 側邊欄高對比防隱形樣式 */
         [data-testid="stSidebar"] {
             background-color: #FFFFFF !important;
             border-right: 1.5px solid #CBD5E1 !important;
@@ -100,16 +141,12 @@ def inject_safe_css():
             height: auto !important;
             object-fit: contain !important;
         }
-
-        /* 側邊欄卡片標題優化 */
         [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
             margin-bottom: 15px !important;
             border-radius: 12px !important;
             background-color: #F8FAFC !important;
             border: 1px solid #E2E8F0 !important;
         }
-
-        /* 標題橫幅 (大家樂經典紅琥珀漸層) */
         .pos-header-banner {
             background: linear-gradient(135deg, #C2301A 0%, #D95D1A 48%, #D87B18 100%) !important;
             border-radius: 14px !important;
@@ -126,82 +163,47 @@ def inject_safe_css():
             letter-spacing: 0.02em !important;
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
-
-        div[data-baseweb="select"],
-        div[data-baseweb="select"] *,
-        div[data-baseweb="input"],
-        div[data-baseweb="input"] *,
-        div[data-baseweb="base-input"],
-        div[data-baseweb="base-input"] *,
-        div[data-testid="stTextInputRootElement"],
-        div[data-testid="stTextInputRootElement"] *,
-        div[data-testid="stNumberInputContainer"],
-        div[data-testid="stNumberInputContainer"] *,
-        div[data-testid="stSelectbox"] div,
-        div[data-testid="stSelectbox"] span,
-        div[data-testid="stSelectbox"] svg,
-        input, select, textarea {
+        div[data-baseweb="select"], div[data-baseweb="select"] *, div[data-baseweb="input"], div[data-baseweb="input"] *,
+        div[data-baseweb="base-input"], div[data-baseweb="base-input"] *, div[data-testid="stTextInputRootElement"],
+        div[data-testid="stTextInputRootElement"] *, div[data-testid="stNumberInputContainer"], div[data-testid="stNumberInputContainer"] *,
+        div[data-testid="stSelectbox"] div, div[data-testid="stSelectbox"] span, div[data-testid="stSelectbox"] svg, input, select, textarea {
             background-color: #FFFFFF !important;
             color: #0F172A !important;
             -webkit-text-fill-color: #0F172A !important;
             fill: #0F172A !important;
         }
-
-        div[data-baseweb="select"] > div,
-        div[data-baseweb="base-input"],
-        div[data-testid="stTextInputRootElement"] > div,
-        div[data-testid="stNumberInputContainer"] > div {
+        div[data-baseweb="select"] > div, div[data-baseweb="base-input"], div[data-testid="stTextInputRootElement"] > div, div[data-testid="stNumberInputContainer"] > div {
             border: 1.5px solid #CBD5E1 !important;
             border-radius: 8px !important;
         }
-
-        div[data-baseweb="popover"],
-        div[data-baseweb="popover"] *,
-        ul[data-baseweb="menu"],
-        ul[data-baseweb="menu"] *,
-        li[data-baseweb="menu-item"],
-        li[data-baseweb="menu-item"] * {
+        div[data-baseweb="popover"], div[data-baseweb="popover"] *, ul[data-baseweb="menu"], ul[data-baseweb="menu"] *,
+        li[data-baseweb="menu-item"], li[data-baseweb="menu-item"] * {
             background-color: #FFFFFF !important;
             color: #0F172A !important;
             -webkit-text-fill-color: #0F172A !important;
         }
-
-        div[data-testid="stFileUploader"],
-        div[data-testid="stFileUploader"] *,
-        section[data-testid="stFileUploaderDropzone"],
-        section[data-testid="stFileUploaderDropzone"] *,
-        div[data-testid="stFileUploaderDropzone"],
-        div[data-testid="stFileUploaderDropzone"] *,
-        div[data-testid="stFileUploaderFile"],
-        div[data-testid="stFileUploaderFile"] *,
-        div[data-testid="stFileUploaderFileData"],
-        div[data-testid="stFileUploaderFileData"] *,
-        div[data-testid="stFileUploaderDropzoneInstructions"],
-        div[data-testid="stFileUploaderDropzoneInstructions"] * {
+        div[data-testid="stFileUploader"], div[data-testid="stFileUploader"] *, section[data-testid="stFileUploaderDropzone"],
+        section[data-testid="stFileUploaderDropzone"] *, div[data-testid="stFileUploaderDropzone"], div[data-testid="stFileUploaderDropzone"] *,
+        div[data-testid="stFileUploaderFile"], div[data-testid="stFileUploaderFile"] *, div[data-testid="stFileUploaderFileData"],
+        div[data-testid="stFileUploaderFileData"] *, div[data-testid="stFileUploaderDropzoneInstructions"], div[data-testid="stFileUploaderDropzoneInstructions"] * {
             background-color: #FFFFFF !important;
             color: #0F172A !important;
             -webkit-text-fill-color: #0F172A !important;
         }
-
         section[data-testid="stFileUploaderDropzone"] {
             border: 2px dashed #94A3B8 !important;
             border-radius: 10px !important;
         }
-
         div[data-testid="stFileUploader"] button {
             background-color: #F1F5F9 !important;
             color: #0F172A !important;
             border: 1px solid #CBD5E1 !important;
         }
-        [data-testid="stSelectbox"] label,
-        [data-testid="stTextInput"] label,
-        [data-testid="stRadio"] label,
-        [data-testid="stCheckbox"] label {
+        [data-testid="stSelectbox"] label, [data-testid="stTextInput"] label, [data-testid="stRadio"] label, [data-testid="stCheckbox"] label {
             color: #0F172A !important;
             font-weight: 700 !important;
             font-size: 0.92rem !important;
         }
-
         [data-testid="stMetric"] {
             background-color: #FFFFFF !important;
             border: 1.5px solid #CBD5E1 !important;
@@ -225,17 +227,13 @@ def inject_safe_css():
             overflow: visible !important;
             text-overflow: clip !important;
         }
-
         div[data-baseweb="tab-list"] {
             gap: 8px !important;
             border-bottom: 2px solid #CBD5E1 !important;
             margin-bottom: 20px !important;
             background-color: transparent !important;
         }
-        button[data-baseweb="tab"],
-        button[data-baseweb="tab"] *,
-        div[data-baseweb="tab-list"] button,
-        div[data-baseweb="tab-list"] button * {
+        button[data-baseweb="tab"], button[data-baseweb="tab"] *, div[data-baseweb="tab-list"] button, div[data-baseweb="tab-list"] button * {
             background-color: transparent !important;
             color: #0F172A !important;
             -webkit-text-fill-color: #0F172A !important;
@@ -243,17 +241,11 @@ def inject_safe_css():
             font-size: 0.95rem !important;
             opacity: 1 !important;
         }
-        button[data-baseweb="tab"]:hover,
-        button[data-baseweb="tab"]:hover *,
-        div[data-baseweb="tab-list"] button:hover,
-        div[data-baseweb="tab-list"] button:hover * {
+        button[data-baseweb="tab"]:hover, button[data-baseweb="tab"]:hover *, div[data-baseweb="tab-list"] button:hover, div[data-baseweb="tab-list"] button:hover * {
             color: #DC2626 !important;
             -webkit-text-fill-color: #DC2626 !important;
         }
-        button[data-baseweb="tab"][aria-selected="true"],
-        button[data-baseweb="tab"][aria-selected="true"] *,
-        div[data-baseweb="tab-list"] button[aria-selected="true"],
-        div[data-baseweb="tab-list"] button[aria-selected="true"] * {
+        button[data-baseweb="tab"][aria-selected="true"], button[data-baseweb="tab"][aria-selected="true"] *, div[data-baseweb="tab-list"] button[aria-selected="true"], div[data-baseweb="tab-list"] button[aria-selected="true"] * {
             color: #DC2626 !important;
             -webkit-text-fill-color: #DC2626 !important;
             font-weight: 800 !important;
@@ -264,7 +256,6 @@ def inject_safe_css():
         div[data-baseweb="tab-border"] {
             background-color: #CBD5E1 !important;
         }
-
         .voucher-box {
             background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%) !important;
             border: 2px dashed #D97706 !important;
@@ -478,22 +469,24 @@ def evaluate_customer_rewards(waste_ratio_pct, is_en=False):
     df_rew = get_live_rewards()
     if df_rew.empty:
         if waste_ratio_pct <= 10.0:
-            desc = "【$3 Cash Voucher】+【50 Green Points】" if is_en else "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】"
+            desc = "[$3 Cash Voucher] + [50 Green Points] + [Half-price Iced Lemon Tea]" if is_en else "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】"
             tier = "Ultra Clean Plate" if is_en else "極致光盤獎"
             return desc, tier, "#10B981"
         elif waste_ratio_pct <= 20.0:
-            desc = "【$2 Dining Voucher】+【20 Green Points】" if is_en else "【$2 堂食電子券】+【20 綠色積分】"
+            desc = "[$2 e-Voucher] + [20 Green Points]" if is_en else "【$2 堂食電子券】+【20 綠色積分】"
             tier = "Standard Clean Plate" if is_en else "達標惜食獎"
             return desc, tier, "#059669"
         else:
-            desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
-            tier = "Green Support" if is_en else "支持環保獎"
+            desc = "[10 Green Points]" if is_en else "【10 綠色環保積分】"
+            tier = "Green Return" if is_en else "支持環保獎"
             return desc, tier, "#3B82F6"
+            
     for _, r in df_rew.iterrows():
         if waste_ratio_pct <= float(r["max_waste_ratio"]):
-            return r["reward_description"], r["tier_name"], "#10B981"
-    desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
-    tier = "Green Support" if is_en else "支持環保獎"
+            return t(r["reward_description"], is_en), t(r["tier_name"], is_en), "#10B981"
+            
+    desc = "[10 Green Points]" if is_en else "【10 綠色環保積分】"
+    tier = "Green Return" if is_en else "支持環保獎"
     return desc, tier, "#64748B"
 
 def save_record(r):
@@ -668,12 +661,23 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
         {"Category": cat_p, "Confidence": f"{top_score:.1%}", "Coverage": f"{protein_ratio*100:.1f}%", "raw_ratio": protein_ratio},
         {"Category": cat_v, "Confidence": f"{top_score:.1%}", "Coverage": f"{veg_ratio*100:.1f}%", "raw_ratio": veg_ratio},
     ]
+    
+    # 決定主要的浪費種類 (存入資料庫用)
+    max_item = max(items, key=lambda x: x["raw_ratio"])
+    primary_waste_disp = max_item["Category"]
+    
+    if "Carb" in primary_waste_disp or "澱粉" in primary_waste_disp:
+        primary_waste_db = "主食澱粉"
+    elif "Protein" in primary_waste_disp or "肉" in primary_waste_disp:
+        primary_waste_db = "蛋白質肉類"
+    else:
+        primary_waste_db = "蔬菜配菜"
 
     box = [int(width * 0.15), int(height * 0.15), int(width * 0.85), int(height * 0.85)]
     draw.rectangle(box, outline=accent_color, width=4)
     draw.text((box[0] + 10, box[1] + 10), f"TrayZero+: {ratio*100:.1f}%", fill=accent_color)
     
-    return img_draw, items, ratio, primary_cat, True
+    return img_draw, items, ratio, primary_cat, primary_waste_db, True
 
 def auto_detect_dish_clip(image, candidate_dishes, engine):
     if not candidate_dishes or image is None: return "未定義餐點", 0.0
@@ -712,13 +716,18 @@ def render_mode1(engine, modules, is_en=False):
     df_b = get_live_branches()
     df_d = get_live_dishes()
     
-    branch_names = df_b["name"].tolist() if not df_b.empty else ["沙田新城市廣場店"]
-    dish_names = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯"]
+    # 建立原廠中文名稱對照表 (確保寫入 DB 是中文)
+    b_names_orig = df_b["name"].tolist() if not df_b.empty else ["沙田新城市廣場店"]
+    d_names_orig = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯"]
+    
+    b_map = {t(b, is_en): b for b in b_names_orig}
+    d_map = {t(d, is_en): d for d in d_names_orig}
 
     with col_k1:
         with st.container(border=True):
             st.markdown(f"#### {'1. Store & Member Identification' if is_en else '1. 門市與會員身份辨識'}")
-            sel_branch = st.selectbox("Current Operating Branch" if is_en else "當前運行分店", branch_names, key="kiosk_branch")
+            sel_branch_disp = st.selectbox("Current Operating Branch" if is_en else "當前運行分店", list(b_map.keys()), key="kiosk_branch")
+            sel_branch = b_map[sel_branch_disp] # 取回資料庫用的中文名
             
             if modules.get("mod4", True):
                 member_id = st.text_input(
@@ -755,11 +764,17 @@ def render_mode1(engine, modules, is_en=False):
             with st.container(border=True):
                 st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
                 if image:
-                    auto_dish, dish_conf = auto_detect_dish_clip(image, dish_names, engine)
-                    st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
-                    sel_dish = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", dish_names, index=dish_names.index(auto_dish) if auto_dish in dish_names else 0)
+                    auto_dish_orig, dish_conf = auto_detect_dish_clip(image, d_names_orig, engine)
+                    auto_dish_disp = t(auto_dish_orig, is_en)
+                    st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish_disp}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
+                    
+                    # 防錯機制：確保 CLIP 選出的菜單存在於目前的 mapping 中
+                    default_idx = list(d_map.keys()).index(auto_dish_disp) if auto_dish_disp in d_map.keys() else 0
+                    sel_dish_disp = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", list(d_map.keys()), index=default_idx)
+                    sel_dish = d_map[sel_dish_disp]
                 else:
-                    sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
+                    sel_dish_disp = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", list(d_map.keys()), index=0)
+                    sel_dish = d_map[sel_dish_disp]
         else:
              sel_dish = "一哥焗豬扒飯"
 
@@ -770,7 +785,7 @@ def render_mode1(engine, modules, is_en=False):
 
                 if image is not None:
                     with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
-                        annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
+                        annotated_img, items, ratio, primary_cat, primary_waste_db, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
                         
                         waste_pct = round(ratio * 100, 1)
                         now = datetime.datetime.now()
@@ -788,10 +803,10 @@ def render_mode1(engine, modules, is_en=False):
                                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
                                 "audit_date": now.strftime("%Y-%m-%d"),
                                 "audit_month": now.strftime("%Y-%m"),
-                                "branch_name": sel_branch, 
+                                "branch_name": sel_branch,  # 存入原廠中文
                                 "branch_level": b_level,
-                                "dish_name": sel_dish, 
-                                "primary_waste": items[0]["Category"], 
+                                "dish_name": sel_dish,      # 存入原廠中文
+                                "primary_waste": primary_waste_db, # 存入原廠中文
                                 "waste_ratio": waste_pct, 
                                 "waste_weight_g": waste_weight,
                                 "cost_waste_hkd": waste_cost, 
@@ -814,7 +829,12 @@ def render_mode1(engine, modules, is_en=False):
                         voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
                         reward_header = f"🎉 {'Club 100 Reward' if is_en else 'Club 100 獎勵發放'}：{tier_name}"
                         guest_label = member_id if (member_id and member_id != "ANON") else ("Guest" if is_en else "訪客")
-                        credited_msg = f"{'Digital coupon credited to account' if is_en else '電子券已即時存入會員帳戶'} ({guest_label})，{'redeemable at Café de Coral.' if is_en else '可於大家樂門市下次消費直接扣減。'}"
+                        credited_msg = f"{'Digital coupon credited to account' if is_en else '電子券已即時存入會員帳戶'} ({guest_label})"
+                        if is_en:
+                            credited_msg += ", redeemable at Café de Coral."
+                        else:
+                            credited_msg += "，可於大家樂門市下次消費直接扣減。"
+                            
                         voucher_card_html = (
                             '<div class="voucher-box">'
                             f'<h4 style="margin: 0 0 6px 0; color: #92400E; font-weight: 800;">{reward_header}</h4>'
@@ -897,14 +917,25 @@ def render_mode2(engine, modules, is_en=False):
 
             c1, c2 = st.columns(2)
             with c1:
-                all_b_text = "🌐 All Branches" if is_en else "🌐 全部分店"
-                branch_options = [all_b_text] + (df_b["name"].tolist() if not df_b.empty else [])
-                b_filter = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度", branch_options)
+                all_b_text_disp = "🌐 All Branches" if is_en else "🌐 全部分店"
+                all_b_text_orig = "🌐 全部分店"
+                
+                b_options_orig = [all_b_text_orig] + (df_b["name"].tolist() if not df_b.empty else [])
+                b_options_disp = [all_b_text_disp] + [t(b, is_en) for b in df_b["name"].tolist()] if not df_b.empty else [all_b_text_disp]
+                
+                b_filter_disp = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度", b_options_disp)
+                b_filter = b_options_orig[b_options_disp.index(b_filter_disp)]
                 sel_b = "ALL" if ("All" in b_filter or "全部" in b_filter) else b_filter
+                
             with c2:
-                all_d_text = "🍱 All Menu Items" if is_en else "🍱 全部餐點品項"
-                dish_options = [all_d_text] + (df_d["name"].tolist() if not df_d.empty else [])
-                d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度", dish_options)
+                all_d_text_disp = "🍱 All Menu Items" if is_en else "🍱 全部餐點品項"
+                all_d_text_orig = "🍱 全部餐點品項"
+                
+                d_options_orig = [all_d_text_orig] + (df_d["name"].tolist() if not df_d.empty else [])
+                d_options_disp = [all_d_text_disp] + [t(d, is_en) for d in df_d["name"].tolist()] if not df_d.empty else [all_d_text_disp]
+                
+                d_filter_disp = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度", d_options_disp)
+                d_filter = d_options_orig[d_options_disp.index(d_filter_disp)]
                 sel_d = "ALL" if ("All" in d_filter or "全部" in d_filter) else d_filter
 
         now = datetime.datetime.now()
@@ -951,14 +982,17 @@ def render_mode2(engine, modules, is_en=False):
     dish_summary = dish_summary.sort_values(by="waste_ratio", ascending=False)
     
     if modules.get("mod2", True):
+        # 繪圖前準備翻譯用欄位
+        dish_summary["dish_name_disp"] = dish_summary["dish_name"].apply(lambda x: t(x, is_en))
+        
         c1, c2 = st.columns(2)
         with c1:
             with st.container(border=True):
                 st.markdown(f"#### 🍲 {'Top Wasted Dishes Ranking' if is_en else '菜式平均殘食率排行'}")
                 chart_dish = alt.Chart(dish_summary).mark_bar(color="#DC2626").encode(
                     x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
-                    y=alt.Y("dish_name:N", sort="-x", title="Dish Item" if is_en else "餐點名稱"),
-                    tooltip=["dish_name", "waste_ratio"]
+                    y=alt.Y("dish_name_disp:N", sort="-x", title="Dish Item" if is_en else "餐點名稱"),
+                    tooltip=["dish_name_disp", "waste_ratio"]
                 ).properties(height=280)
                 st.altair_chart(chart_dish, use_container_width=True)
 
@@ -966,10 +1000,11 @@ def render_mode2(engine, modules, is_en=False):
             with st.container(border=True):
                 st.markdown(f"#### 🏪 {'Branch Benchmarks' if is_en else '門市殘食率分佈'}")
                 branch_summary = df_filtered.groupby("branch_name")["waste_ratio"].mean().reset_index()
+                branch_summary["branch_name_disp"] = branch_summary["branch_name"].apply(lambda x: t(x, is_en))
                 chart_branch = alt.Chart(branch_summary).mark_bar(color="#D97706").encode(
                     x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
-                    y=alt.Y("branch_name:N", sort="-x", title="Branch" if is_en else "分店"),
-                    tooltip=["branch_name", "waste_ratio"]
+                    y=alt.Y("branch_name_disp:N", sort="-x", title="Branch" if is_en else "分店"),
+                    tooltip=["branch_name_disp", "waste_ratio"]
                 ).properties(height=280)
                 st.altair_chart(chart_branch, use_container_width=True)
 
@@ -977,17 +1012,23 @@ def render_mode2(engine, modules, is_en=False):
         st.markdown("---")
         st.markdown(f"### 🤖 {'Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else '門市級別智能營運與廚房備料 SOP 決策引擎'}")
 
-        target_store_name = ("All Café de Coral Branches" if is_en else "大家樂全線門市") if sel_b == "ALL" else sel_b
-        top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯"
+        target_store_name_orig = "大家樂全線門市" if sel_b == "ALL" else sel_b
+        target_store_name = ("All Café de Coral Branches" if is_en else "大家樂全線門市") if sel_b == "ALL" else t(sel_b, is_en)
+        
+        top_wasted_dish_orig = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯"
+        top_wasted_dish = t(top_wasted_dish_orig, is_en)
+        
         top_wasted_ratio = dish_summary.iloc[0]["waste_ratio"] if not dish_summary.empty else avg_w
-        primary_waste_comp = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns else ("Carbohydrates" if is_en else "主食澱粉")
+        
+        primary_waste_comp_orig = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns and not df_filtered.empty else "主食澱粉"
+        primary_waste_comp = t(primary_waste_comp_orig, is_en)
 
         with st.container(border=True):
             st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Sample Size' if is_en else '樣本規模'}：**{n:,} {'Trays' if is_en else '盤'}**")
             st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
             st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
-            prompt_hash = f"{target_store_name}_{top_wasted_dish}_{top_wasted_ratio}_{n}"
+            prompt_hash = f"{target_store_name_orig}_{top_wasted_dish_orig}_{top_wasted_ratio}_{n}"
             if "nlp_cache" not in st.session_state:
                 st.session_state["nlp_cache"] = {}
 
@@ -997,8 +1038,8 @@ def render_mode2(engine, modules, is_en=False):
                 with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
                     raw_prompt = (
                         f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
-                        f"Dish: {top_wasted_dish}, Waste: {top_wasted_ratio:.1f}%, "
-                        f"Repeated Occurrences: {n} in branch {target_store_name}."
+                        f"Dish: {top_wasted_dish_orig}, Waste: {top_wasted_ratio:.1f}%, "
+                        f"Repeated Occurrences: {n} in branch {target_store_name_orig}."
                     )
                     try:
                         raw_output = engine["nlp"](raw_prompt, max_new_tokens=45)[0]["generated_text"]
@@ -1006,16 +1047,16 @@ def render_mode2(engine, modules, is_en=False):
                         raw_output = "[Kitchen SOP] Recalibrated based on dynamic waste ratios."
                     st.session_state["nlp_cache"][prompt_hash] = raw_output
 
-            if "豬" in top_wasted_dish or "Pork" in top_wasted_dish:
+            if "豬" in top_wasted_dish_orig or "Pork" in top_wasted_dish_orig:
                 carb_name, prot_name, veg_name = "白飯", "焗厚切豬扒", "番茄/醬汁"
                 carb_en, prot_en, veg_en = "Rice", "Pork Chop", "Tomato/Sauce"
-            elif "意粉" in top_wasted_dish or "Spaghetti" in top_wasted_dish:
+            elif "意粉" in top_wasted_dish_orig or "Spaghetti" in top_wasted_dish_orig:
                 carb_name, prot_name, veg_name = "意大利麵", "慢燉牛肉醬", "洋蔥/配菜"
                 carb_en, prot_en, veg_en = "Spaghetti", "Bolognese Sauce", "Onion/Garnish"
-            elif "燒味" in top_wasted_dish or "Siu Mei" in top_wasted_dish:
+            elif "燒味" in top_wasted_dish_orig or "Siu Mei" in top_wasted_dish_orig:
                 carb_name, prot_name, veg_name = "白飯", "燒味肉類", "伴碟青菜"
                 carb_en, prot_en, veg_en = "Rice", "Roasted Meat", "Veggie Garnish"
-            elif "牛河" in top_wasted_dish or "Noodles" in top_wasted_dish:
+            elif "牛河" in top_wasted_dish_orig or "Noodles" in top_wasted_dish_orig:
                 carb_name, prot_name, veg_name = "河粉", "牛肉", "芽菜/蔥段"
                 carb_en, prot_en, veg_en = "Flat Noodles", "Beef", "Sprouts/Scallion"
             else:
@@ -1112,9 +1153,21 @@ def render_mode2(engine, modules, is_en=False):
                 st.markdown(card_html, unsafe_allow_html=True)
 
     if modules.get("mod2", True):
+        # 準備資料表供顯示用，進行翻譯
+        df_disp = df_filtered.copy()
+        if is_en:
+            if "branch_name" in df_disp.columns:
+                df_disp["branch_name"] = df_disp["branch_name"].apply(lambda x: t(x, is_en))
+            if "dish_name" in df_disp.columns:
+                df_disp["dish_name"] = df_disp["dish_name"].apply(lambda x: t(x, is_en))
+            if "primary_waste" in df_disp.columns:
+                df_disp["primary_waste"] = df_disp["primary_waste"].apply(lambda x: t(x, is_en))
+            if "branch_level" in df_disp.columns:
+                df_disp["branch_level"] = df_disp["branch_level"].apply(lambda x: t(x, is_en))
+
         with st.container(border=True):
             st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表'}")
-            st.dataframe(df_filtered, use_container_width=True)
+            st.dataframe(df_disp, use_container_width=True)
 
 # ==============================================================================
 # 🌟 動態 Tab 控制函數
@@ -1147,13 +1200,25 @@ def render_mode3(modules=None, is_en=False):
         with tabs[i]:
             with st.container(border=True):
                 if key == "menu":
-                    df_dishes = get_live_dishes()
+                    df_dishes = get_live_dishes().copy()
+                    if is_en:
+                        for col in ["name", "main_carb", "protein"]:
+                            if col in df_dishes.columns:
+                                df_dishes[col] = df_dishes[col].apply(lambda x: t(x, is_en))
                     st.dataframe(df_dishes, use_container_width=True)
                 elif key == "branch":
-                    df_branches = get_live_branches()
+                    df_branches = get_live_branches().copy()
+                    if is_en:
+                        for col in ["name", "level", "district", "traffic"]:
+                            if col in df_branches.columns:
+                                df_branches[col] = df_branches[col].apply(lambda x: t(x, is_en))
                     st.dataframe(df_branches, use_container_width=True)
                 elif key == "reward":
-                    df_rewards = get_live_rewards()
+                    df_rewards = get_live_rewards().copy()
+                    if is_en:
+                        for col in ["tier_name", "reward_description"]:
+                            if col in df_rewards.columns:
+                                df_rewards[col] = df_rewards[col].apply(lambda x: t(x, is_en))
                     st.dataframe(df_rewards, use_container_width=True)
 
 # ==============================================================================
@@ -1163,9 +1228,8 @@ def main():
     inject_safe_css()
     init_db()
 
-    # --- 側邊欄 UI 大改版 (Card-based Layout) ---
+    # --- 側邊欄 UI ---
     with st.sidebar:
-        # [區塊 1] 品牌與標題
         if os.path.exists(LOGO_FILE_PNG):
             st.image(LOGO_FILE_PNG, use_container_width=True)
         elif os.path.exists(LOGO_FILE_JPG):
@@ -1173,25 +1237,30 @@ def main():
         else:
             st.markdown("<h2 style='text-align: center;'>🍽️ Café de Coral</h2>", unsafe_allow_html=True)
 
+        # 這裡會判斷 is_en 的狀態，但我們要先拿到 lang_choice
+        # 所以先把 lang_choice 放前面
+        lang_choice_temp = st.session_state.get("lang_choice_temp", "繁體中文 (Traditional Chinese)")
+        is_en_temp = "English" in lang_choice_temp
+
+        console_title = "TrayZero+ Console" if is_en_temp else "TrayZero+ 控制台"
+        console_sub = "Café de Coral · Smart Plate Audit" if is_en_temp else "大家樂集團 · 智能餐盤審計"
+        
         st.markdown(
-            """
+            f"""
             <div style="text-align: center; margin-bottom: 1.5rem; margin-top: -10px;">
-                <h3 style="color: #0F172A; font-weight: 900; margin-bottom: 4px; font-size: 1.4rem;">TrayZero+ 控制台</h3>
-                <span style="color: #64748B; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.5px;">大家樂集團 · 智能餐盤審計</span>
+                <h3 style="color: #0F172A; font-weight: 900; margin-bottom: 4px; font-size: 1.4rem;">{console_title}</h3>
+                <span style="color: #64748B; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.5px;">{console_sub}</span>
             </div>
             """, unsafe_allow_html=True
         )
 
-        # [區塊 2] 全局語言設定
         with st.container(border=True):
-            st.markdown("##### ⚙️ 語言 / Language")
-            lang_choice = st.radio("Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], label_visibility="collapsed")
+            st.markdown(f"##### ⚙️ {'Language' if is_en_temp else '語言 / Language'}")
+            lang_choice = st.radio("Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], label_visibility="collapsed", key="lang_choice_temp")
             is_en = "English" in lang_choice
 
-        # 預留 Mode Container 以確保選項順序，但不立刻渲染選項內容
         mode_container = st.container(border=True)
 
-        # [區塊 4] 模組開關 (先讀取狀態以供 Route 判斷)
         with st.container(border=True):
             st.markdown(f"##### 🔌 {'Enterprise Modules' if is_en else '企業模組狀態'}")
             mod_1 = st.checkbox("M1: Ops Core" if is_en else "M1: 營運監控", value=True)
@@ -1206,10 +1275,12 @@ def main():
             "mod4": mod_4
         }
 
-        # [區塊 3] 系統運行模式導航 (依據模組狀態渲染)
-        mode_options = ["Frontline Return Kiosk" if is_en else "門市前線收盤機"]
+        mode_options = [
+            "Frontline Return Kiosk" if is_en else "門市前線收盤機"
+        ]
         if mod_2:
             mode_options.append("Operations HQ BI Analytics" if is_en else "總部 BI 大數據看板")
+        
         mode_options.append("Dynamic Master Configuration" if is_en else "菜單與獎勵配置")
 
         with mode_container:

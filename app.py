@@ -697,7 +697,7 @@ def render_header(modules=None, is_en=False):
     st.markdown(header_html, unsafe_allow_html=True)
 
 def render_mode1(engine, modules, is_en=False):
-    st.markdown(f"### 📷 {'Mode 1: Frontline Smart Tray Return Kiosk' if is_en else 'Mode 1: 門市前線智能收盤點餐機 (Frontline Kiosk)'}")
+    st.markdown(f"### 📷 {'Frontline Smart Tray Return Kiosk' if is_en else '門市前線智能收盤點餐機'}")
     
     col_k1, col_k2 = st.columns([1, 1], gap="large")
 
@@ -854,7 +854,7 @@ def render_mode1(engine, modules, is_en=False):
                         st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
 
 def render_mode2(engine, modules, is_en=False):
-    st.markdown(f"### 📊 {'Mode 2: Operations HQ & ESG BI Analytics Dashboard' if is_en else 'Mode 2: 總部營運與 ESG 大數據儀表板 (Operations HQ BI)'}")
+    st.markdown(f"### 📊 {'Operations HQ & ESG BI Analytics Dashboard' if is_en else '總部營運與 ESG 大數據儀表板'}")
     
     df_raw = get_records()
     if df_raw.empty:
@@ -882,21 +882,21 @@ def render_mode2(engine, modules, is_en=False):
 
     if modules.get("mod2", True):
         with st.container(border=True):
-            st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣 (2-Dimension Filter Matrix)'}")
+            st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣'}")
             
-            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 按月分析 (Monthly)", "📈 按年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
-            period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度 (Dimension 2: Time Period)", period_opts, horizontal=True, index=4)
+            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日", "📅 本周", "🗓️ 本月", "📈 本年", "🌐 全部歷史"]
+            period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度", period_opts, horizontal=True, index=4)
 
             c1, c2 = st.columns(2)
             with c1:
                 all_b_text = "🌐 All Branches" if is_en else "🌐 全部分店"
                 branch_options = [all_b_text] + (df_b["name"].tolist() if not df_b.empty else [])
-                b_filter = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度 (Dimension 1A: Branch Filter)", branch_options)
+                b_filter = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度", branch_options)
                 sel_b = "ALL" if ("All" in b_filter or "全部" in b_filter) else b_filter
             with c2:
                 all_d_text = "🍱 All Menu Items" if is_en else "🍱 全部餐點品項"
                 dish_options = [all_d_text] + (df_d["name"].tolist() if not df_d.empty else [])
-                d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度 (Dimension 1B: Dish Filter)", dish_options)
+                d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度", dish_options)
                 sel_d = "ALL" if ("All" in d_filter or "全部" in d_filter) else d_filter
 
         now = datetime.datetime.now()
@@ -1120,7 +1120,7 @@ def render_mode2(engine, modules, is_en=False):
 # 🌟 動態 Tab 控制函數 (Dynamic Tab Rendering)
 # ==============================================================================
 def render_mode3(modules=None, is_en=False):
-    st.markdown(f"### ⚙️ {'Mode 3: Dynamic Menu, Branch & Reward Configuration' if is_en else 'Mode 3: 菜單、分店與獎勵規則動態管理 (Dynamic Configuration)'}")
+    st.markdown(f"### ⚙️ {'Dynamic Menu, Branch & Reward Configuration' if is_en else '菜單、分店與獎勵規則動態管理'}")
     
     tab_titles = []
     tab_keys = []
@@ -1179,12 +1179,12 @@ def main():
     mode_container = st.sidebar.container()
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態 (MODULES)'}")
+    st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態'}")
     
-    mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控 (Ops Core)", value=True)
-    mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析 (BI Analytics)", value=True)
-    mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷 (Smart POS)", value=True)
-    mod_4 = st.sidebar.checkbox("M4: Loyalty Loop" if is_en else "M4: 會員閉環 (Loyalty Loop)", value=True)
+    mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控 ", value=True)
+    mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析", value=True)
+    mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷 ", value=True)
+    mod_4 = st.sidebar.checkbox("M4: Loyalty Loop" if is_en else "M4: 會員閉環", value=True)
 
     active_modules = {
         "mod1": mod_1,
@@ -1194,15 +1194,15 @@ def main():
     }
 
     mode_options = [
-        "Mode 1: Frontline Return Kiosk" if is_en else "Mode 1: 門市前線收盤機 (Frontline Kiosk)"
+        "Frontline Return Kiosk" if is_en else "門市前線收盤機"
     ]
     if mod_2:
-        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部 BI 大數據看板 (HQ Analytics)")
+        mode_options.append("Operations HQ BI Analytics" if is_en else "總部 BI 大數據看板")
     
-    mode_options.append("Mode 3: Dynamic Master Configuration" if is_en else "Mode 3: 菜單與獎勵配置 (Dynamic Config)")
+    mode_options.append("Dynamic Master Configuration" if is_en else "菜單與獎勵配置")
 
     mode_container.markdown("---")
-    mode = mode_container.radio("System Operation Mode" if is_en else "系統運行模式 (SYSTEM MODE)", mode_options)
+    mode = mode_container.radio("System Operation Mode" if is_en else "系統運行模式", mode_options)
 
     with st.spinner("🚀 Loading Chained AI Pipelines..." if is_en else "🚀 正在啟動雙管線深度學習引擎 (Loading AI Engine)..."):
         engine = load_ai_engine()

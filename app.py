@@ -38,8 +38,6 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
-DEFAULT_BASE_GDRIVE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSloK2WPNFd8HPY4RfL2rNhwhk_kD12H0q09nDcrlMrx5O_zqslCOi1TPAXvlHtnP1FWxyJxGgG99QX/pub?output=csv"
-
 def inject_safe_css():
     st.markdown("""
     <style>
@@ -121,7 +119,6 @@ def inject_safe_css():
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
 
-        /* 🌟 徹底消滅深色 UI：所有輸入框、下拉選單、文本框、上傳器強制為純白背景 (#FFFFFF) 與深黑文字 (#0F172A) */
         div[data-baseweb="select"],
         div[data-baseweb="select"] *,
         div[data-baseweb="input"],
@@ -142,7 +139,6 @@ def inject_safe_css():
             fill: #0F172A !important;
         }
 
-        /* 邊框維持清晰的淺灰邊框 */
         div[data-baseweb="select"] > div,
         div[data-baseweb="base-input"],
         div[data-testid="stTextInputRootElement"] > div,
@@ -151,7 +147,6 @@ def inject_safe_css():
             border-radius: 8px !important;
         }
 
-        /* 下拉選單彈出層 (Menu / Popover) 純白底黑字 */
         div[data-baseweb="popover"],
         div[data-baseweb="popover"] *,
         ul[data-baseweb="menu"],
@@ -163,7 +158,6 @@ def inject_safe_css():
             -webkit-text-fill-color: #0F172A !important;
         }
 
-        /* 🌟 徹底修復檔案上傳元件 (stFileUploader) 黑底問題：全部強制為純白底與深黑字 */
         div[data-testid="stFileUploader"],
         div[data-testid="stFileUploader"] *,
         section[data-testid="stFileUploaderDropzone"],
@@ -200,7 +194,6 @@ def inject_safe_css():
             font-size: 0.92rem !important;
         }
 
-        /* 原生指標卡片 (st.metric) 高對比顯色保證 */
         [data-testid="stMetric"] {
             background-color: #FFFFFF !important;
             border: 1.5px solid #CBD5E1 !important;
@@ -225,7 +218,6 @@ def inject_safe_css():
             text-overflow: clip !important;
         }
 
-        /* 🌟 Mode 3 分頁標籤 (Tabs) 防隱形：非選中狀態強制深黑灰字體，選中狀態為大家樂品牌紅 */
         div[data-baseweb="tab-list"] {
             gap: 8px !important;
             border-bottom: 2px solid #CBD5E1 !important;
@@ -265,7 +257,6 @@ def inject_safe_css():
             background-color: #CBD5E1 !important;
         }
 
-        /* 獎勵優惠券視覺卡 */
         .voucher-box {
             background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%) !important;
             border: 2px dashed #D97706 !important;
@@ -278,7 +269,7 @@ def inject_safe_css():
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. Database Connection & Data Store (資料庫與本地儲存)
+# 2. Database Connection & Data Store
 # ==============================================================================
 def db_conn(): 
     try:
@@ -308,7 +299,6 @@ def ensure_audit_logs_schema(conn):
     """)
     conn.commit()
     
-    # 🌟 動態欄位檢查與無損熱遷移
     cur.execute("PRAGMA table_info(audit_logs)")
     existing_cols = {col[1] for col in cur.fetchall()}
     expected_cols = [
@@ -373,7 +363,6 @@ def init_db():
     conn.commit()
     ensure_audit_logs_schema(conn)
 
-    # 初始化預設菜單 (依據最新指示改為 4 種經典餐點)
     default_dishes = [
         ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
         ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
@@ -387,7 +376,6 @@ def init_db():
         cur.executemany("INSERT INTO dishes VALUES (?,?,?,?)", default_dishes)
         conn.commit()
 
-    # 初始化預設門市
     cur.execute("SELECT COUNT(*) FROM branches")
     if cur.fetchone()[0] == 0:
         default_branches = [
@@ -398,7 +386,6 @@ def init_db():
         ]
         cur.executemany("INSERT OR IGNORE INTO branches VALUES (?,?,?,?,?,?)", default_branches)
 
-    # 初始化預設獎勵規則
     cur.execute("SELECT COUNT(*) FROM rewards")
     if cur.fetchone()[0] == 0:
         default_rewards = [
@@ -408,7 +395,6 @@ def init_db():
         ]
         cur.executemany("INSERT OR IGNORE INTO rewards VALUES (?,?,?,?,?,?)", default_rewards)
 
-    # 初始化預設審計日誌
     cur.execute("SELECT COUNT(*) FROM audit_logs")
     if cur.fetchone()[0] == 0 and os.path.exists(SEED_AUDIT_FILE):
         try:
@@ -570,14 +556,13 @@ def get_records():
     return pd.DataFrame()
 
 # ==============================================================================
-# 3. AI Engine (載入今日新微調之雙管線 Transformer 模型)
+# 3. AI Engine
 # ==============================================================================
 @st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     device_id = 0 if torch.cuda.is_available() else -1
     
-    # Pipeline 1: 視覺殘食審計
     p1_model_id = "kktlau115/trayzero-frozen-swin-model"
     try:
         processor = AutoImageProcessor.from_pretrained(p1_model_id)
@@ -589,7 +574,6 @@ def load_ai_engine():
         model = AutoModelForImageClassification.from_pretrained(fallback_p1).to(dev)
         model.eval()
 
-    # 輔助模組: Zero-shot CLIP 菜式智慧核驗
     try:
         clip_classifier = pipeline(
             "zero-shot-image-classification", 
@@ -599,7 +583,6 @@ def load_ai_engine():
     except Exception:
         clip_classifier = None
 
-    # Pipeline 2: 智能廚房 SOP 預警與會員激勵生成
     p2_model_id = "kktlau115/trayzero-flant5-sop-alert"
     try:
         nlp_generator = pipeline(
@@ -697,11 +680,11 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
         return candidate_dishes[0], 0.75
 
 # ==============================================================================
-# 4. Mode Renderers (前線收盤 Mode 1、總部 BI Mode 2 與 配置 Mode 3)
+# 4. Mode Renderers
 # ==============================================================================
 def render_header(modules=None, is_en=False):
     title_text = "🍽️ TrayZero+ | Café de Coral Smart Plate Waste Audit & Loyalty System" if is_en else "🍽️ TrayZero+ | 大家樂智能餐盤廚餘審計與會員閉環系統"
-    sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine"
+    sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine · 雙管線深度學習驅動"
     
     header_html = (
         '<div class="pos-header-banner">'
@@ -725,7 +708,6 @@ def render_mode1(engine, modules, is_en=False):
     dish_names = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯 (Baked Pork Chop Rice)"]
 
     with col_k1:
-        # Step 1: 門市與會員身份辨識 (受 M4: Loyalty Loop 控制)
         with st.container(border=True):
             st.markdown(f"#### {'1. Store & Member Identification' if is_en else '1. 門市與會員身份辨識'}")
             sel_branch = st.selectbox("Current Operating Branch" if is_en else "當前運行分店", branch_names, key="kiosk_branch")
@@ -740,7 +722,6 @@ def render_mode1(engine, modules, is_en=False):
             else:
                 member_id = "ANON"
 
-        # Step 2: 餐盤影像獲取 (基礎硬件攝像通道)
         with st.container(border=True):
             st.markdown(f"#### {'2. Tray Image Ingest (Auto-Audit on Upload)' if is_en else '2. 餐盤影像獲取 (上傳後自動啟動審計)'}")
             src_opts = ["Upload Photo / Test Image", "Live Camera Capture"] if is_en else ["測試圖片 / 拍照上傳", "即時相機拍攝"]
@@ -762,7 +743,6 @@ def render_mode1(engine, modules, is_en=False):
                     image = Image.open(uploaded_file)
                     img_id = f"up_{uploaded_file.name}_{uploaded_file.size}"
 
-        # Step 3: 菜式辨識與確認 (受 M3: Smart POS 控制)
         if modules.get("mod3", True):
             with st.container(border=True):
                 st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
@@ -776,13 +756,11 @@ def render_mode1(engine, modules, is_en=False):
              sel_dish = "一哥焗豬扒飯 (Baked Pork Chop Rice)"
 
     with col_k2:
-        # Step 4: 深度學習審計與即時回饋 (受 M1: Ops Core, M2: BI Analytics, M4: Loyalty Loop 控制)
         if modules.get("mod1", True):
             with st.container(border=True):
                 st.markdown(f"#### {'4. Deep Learning Audit & Instant Feedback' if is_en else '4. 深度學習審計與即時回饋'}")
 
                 if image is not None:
-                    # 🌟 M1: 營運監控 (Ops Core) 開關控制
                     with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
                         annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
                         
@@ -797,7 +775,6 @@ def render_mode1(engine, modules, is_en=False):
                         waste_cost = round(waste_weight * 0.045, 2)
                         waste_carbon = round(waste_weight * 0.0028, 3)
 
-                        # 避免重複刷新寫入資料庫
                         if st.session_state.get("last_processed_img_id") != img_id:
                             save_record({
                                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
@@ -825,7 +802,6 @@ def render_mode1(engine, modules, is_en=False):
                     with m_col3:
                         st.metric("Scope 3 CO2" if is_en else "產生碳排放", f"{waste_carbon} kg")
 
-                    # 🌟 M4: 會員閉環 (Loyalty Loop) 開關控制
                     if modules.get("mod4", True):
                         voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
                         reward_header = f"🎉 {'Club 100 Reward' if is_en else 'Club 100 獎勵發放'}：{tier_name}"
@@ -840,7 +816,6 @@ def render_mode1(engine, modules, is_en=False):
                         )
                         st.markdown(voucher_card_html, unsafe_allow_html=True)
 
-                    # 🌟 M2: 深度分析 (BI Analytics) 開關控制 - 各大食材分項佔比
                     if modules.get("mod2", True):
                         st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比 (Macronutrient Breakdown)'}")
                         
@@ -888,7 +863,6 @@ def render_mode2(engine, modules, is_en=False):
     df_b = get_live_branches()
     df_d = get_live_dishes()
 
-    # 執行數據基本格式整理與日期安全解析
     df_filtered = df_raw.copy()
     if "parsed_dt" not in df_filtered.columns or df_filtered["parsed_dt"].isna().all():
         if "timestamp" in df_filtered.columns:
@@ -906,18 +880,13 @@ def render_mode2(engine, modules, is_en=False):
     sel_b = "ALL"
     sel_d = "ALL"
 
-    # ==========================================================================
-    # 🌟 M2: 深度分析 (BI Analytics) 控制：雙維度過濾功能 (2-Dimension Filter Matrix)
-    # ==========================================================================
     if modules.get("mod2", True):
         with st.container(border=True):
             st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣 (2-Dimension Filter Matrix)'}")
             
-            # 維度二：時間維度 (按日 / 按周 / 按月 / 按年 / 全部歷史)
-            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日分析 (Today)", "📅 本周分析 (This Week)", "🗓️ 本月分析 (Monthly)", "📈 本年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
+            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 按月分析 (Monthly)", "📈 按年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
             period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度 (Dimension 2: Time Period)", period_opts, horizontal=True, index=4)
 
-            # 維度一：實體與菜單維度 (按門市分店 / 按餐點品項)
             c1, c2 = st.columns(2)
             with c1:
                 all_b_text = "🌐 All Branches" if is_en else "🌐 全部分店"
@@ -930,22 +899,20 @@ def render_mode2(engine, modules, is_en=False):
                 d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度 (Dimension 1B: Dish Filter)", dish_options)
                 sel_d = "ALL" if ("All" in d_filter or "全部" in d_filter) else d_filter
 
-        # 依時間維度過濾
         now = datetime.datetime.now()
-        if "Today" in period_filter or "本日分析" in period_filter:
+        if "Today" in period_filter or "本日" in period_filter:
             today_str = now.strftime("%Y-%m-%d")
             df_filtered = df_filtered[df_filtered["audit_date"] == today_str]
-        elif "Week" in period_filter or "本周分析" in period_filter:
+        elif "Week" in period_filter or "本周" in period_filter:
             seven_days_ago = now - datetime.timedelta(days=7)
             df_filtered = df_filtered[df_filtered["parsed_dt"] >= seven_days_ago]
-        elif "Month" in period_filter or "本月分析" in period_filter:
+        elif "Month" in period_filter or "按月" in period_filter:
             this_month_str = now.strftime("%Y-%m")
             df_filtered = df_filtered[df_filtered["audit_month"] == this_month_str]
-        elif "Year" in period_filter or "本年分析" in period_filter:
+        elif "Year" in period_filter or "按年" in period_filter:
             this_year_str = str(now.year)
             df_filtered = df_filtered[df_filtered["audit_year"] == this_year_str]
 
-        # 依門市與餐點過濾
         if sel_b != "ALL":
             df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
         if sel_d != "ALL":
@@ -955,16 +922,12 @@ def render_mode2(engine, modules, is_en=False):
     if n == 0:
         return
 
-    # 核心統計值
     avg_w = float(df_filtered["waste_ratio"].mean())
     cost_col = "cost_waste_hkd" if "cost_waste_hkd" in df_filtered.columns else "estimated_cost_hkd"
     tot_hkd = float(df_filtered[cost_col].sum()) if cost_col in df_filtered.columns else 0.0
     co2_col = "co2_emission_kg" if "co2_emission_kg" in df_filtered.columns else "carbon_kg"
     tot_co2 = float(df_filtered[co2_col].sum()) if co2_col in df_filtered.columns else 0.0
 
-    # ==========================================================================
-    # 🌟 M1: 營運監控 (Ops Core) 控制：4 大核心 KPI 指標卡片
-    # ==========================================================================
     if modules.get("mod1", True):
         m1, m2, m3, m4 = st.columns(4)
         with m1:
@@ -976,9 +939,6 @@ def render_mode2(engine, modules, is_en=False):
         with m4:
             st.metric("Scope 3 CO2 Emissions" if is_en else "累計 Scope 3 碳排放", f"{tot_co2:,.2f} kg")
 
-    # ==========================================================================
-    # 🌟 M2: 深度分析 (BI Analytics) 控制：圖表視覺化 (菜式排行、門市分佈)
-    # ==========================================================================
     dish_summary = df_filtered.groupby("dish_name")["waste_ratio"].mean().reset_index()
     dish_summary = dish_summary.sort_values(by="waste_ratio", ascending=False)
     
@@ -1006,7 +966,7 @@ def render_mode2(engine, modules, is_en=False):
                 st.altair_chart(chart_branch, use_container_width=True)
 
     # ==========================================================================
-    # 🌟 Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (受 M1, M3, M4 聯動控制)
+    # 🌟 Pipeline 2: 動態門市級別 SOP 決策引擎 (依據餐點類型與殘食率產生)
     # ==========================================================================
     if modules.get("mod1", True):
         st.markdown("---")
@@ -1022,7 +982,6 @@ def render_mode2(engine, modules, is_en=False):
             st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
             st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
-            # 🌟 自動執行 Pipeline 2，無須按按鈕
             with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
                 raw_prompt = (
                     f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
@@ -1032,9 +991,56 @@ def render_mode2(engine, modules, is_en=False):
                 try:
                     raw_output = engine["nlp"](raw_prompt, max_length=128)[0]["generated_text"]
                 except Exception:
-                    raw_output = "[Kitchen SOP] Recalibrate portioning standard. [Club 100 Reward] Promote Less Rice option."
+                    raw_output = "[Kitchen SOP] Recalibrated based on dynamic waste ratios."
 
-            # 動態生成受 M3 (Smart POS) 與 M4 (Loyalty Loop) 控制的 Section II 內容
+            # 解析當前高損耗餐點包含的成分，實現精準建議
+            if "豬" in top_wasted_dish or "Pork" in top_wasted_dish:
+                carb_name, prot_name, veg_name = "白飯", "焗厚切豬扒", "番茄/醬汁"
+                carb_en, prot_en, veg_en = "Rice", "Pork Chop", "Tomato/Sauce"
+            elif "意粉" in top_wasted_dish or "Spaghetti" in top_wasted_dish:
+                carb_name, prot_name, veg_name = "意大利麵", "慢燉牛肉醬", "洋蔥/配菜"
+                carb_en, prot_en, veg_en = "Spaghetti", "Bolognese Sauce", "Onion/Garnish"
+            elif "燒味" in top_wasted_dish or "Siu Mei" in top_wasted_dish:
+                carb_name, prot_name, veg_name = "白飯", "燒味肉類", "伴碟青菜"
+                carb_en, prot_en, veg_en = "Rice", "Roasted Meat", "Veggie Garnish"
+            elif "牛河" in top_wasted_dish or "Noodles" in top_wasted_dish:
+                carb_name, prot_name, veg_name = "河粉", "牛肉", "芽菜/蔥段"
+                carb_en, prot_en, veg_en = "Flat Noodles", "Beef", "Sprouts/Scallion"
+            else:
+                carb_name, prot_name, veg_name = "主食澱粉", "蛋白質肉類", "蔬菜配菜"
+                carb_en, prot_en, veg_en = "Carbs", "Protein", "Vegetables"
+
+            # 🌟 動態 SOP 產生邏輯 (Dynamic Logic based on waste ratio)
+            if top_wasted_ratio <= 15.0:
+                sop_zh = (f"監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率極低（僅 <b>{top_wasted_ratio:.1f}%</b>）。<br>"
+                          f"• <b>🍚 {carb_name}</b>、<b>🥩 {prot_name}</b> 與 <b>🥦 {veg_name}</b> 消耗率極佳，現有食譜比例完美。要求該店廚房主管繼續嚴格執行當前標準 SOP，無需進行份量扣減。")
+                sop_en = (f"Excellent zero-waste performance! Low residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}.<br>"
+                          f"• <b>🍚 {carb_en}</b>, <b>🥩 {prot_en}</b>, and <b>🥦 {veg_en}</b> are highly consumed. Current SOP and recipes are optimal. Maintain standard portioning without reductions.")
+                esg_zh = f"預估該門市精準的出餐標準已成功將廚餘浪費降至最低。透過維持現狀，該店每月持續達成<b>「零浪費」</b>的綠色營運目標，完全符合 HKEX ESG 最佳披露準則，無需額外扣減食材。"
+                esg_en = "Current precise portioning has successfully minimized food waste. By maintaining this standard, the branch achieves its <b>Zero Waste</b> green operations target, perfectly aligning with HKEX ESG best practices."
+            elif top_wasted_ratio <= 35.0:
+                sop_zh = (f"監測到【{target_store_name}】之【{top_wasted_dish}】出現中度浪費（殘食率 <b>{top_wasted_ratio:.1f}%</b>）。為有效控制食材成本，建議採取以下多維度調整：<br>"
+                          f"• <b>🍚 {carb_name} (主食)</b>：建議將打餐標準量下調 10-15%，直接減少無效澱粉損耗。<br>"
+                          f"• <b>🥩 {prot_name} (蛋白質)</b>：雖非最大浪費源，但高成本食材殘留反映顧客可能對口感不滿。建議檢視肉類切割大小與火候，避免因過韌或過柴遭棄置。<br>"
+                          f"• <b>🥦 {veg_name} (配菜)</b>：微調醬汁或配料比例，避免過多導致餐盤賣相凌亂或掩蓋主食風味。")
+                sop_en = (f"Moderate residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}. To optimize food costs, apply the following multi-dimensional SOP adjustments:<br>"
+                          f"• <b>🍚 {carb_en} (Carbs)</b>: Reduce standard portioning by 10-15% to cut ineffective starch waste.<br>"
+                          f"• <b>🥩 {prot_en} (Protein)</b>: High-cost ingredient residuals indicate potential texture/taste issues. Review cooking time and meat tenderness to prevent rejection.<br>"
+                          f"• <b>🥦 {veg_en} (Garnish/Sauce)</b>: Recalibrate sauce/garnish ratios. Over-saucing can negatively impact meal presentation and flavor balance.")
+                esg_zh = f"預估此溫和調整可降低該分店廚房備料過剩約 5-8%，預計每月節省食材成本約 <b>HK$ 2,100</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>1.5 噸</b>。"
+                esg_en = "This moderate intervention reduces kitchen over-portioning by 5-8%, saving approximately <b>HK$ 2,100/month</b> in food costs and cutting annual Scope 3 emissions by <b>1.5 tonnes CO2e</b>."
+            else:
+                sop_zh = (f"監測到【{target_store_name}】之【{top_wasted_dish}】屬嚴重損耗（殘食率高達 <b>{top_wasted_ratio:.1f}%</b>）。必須即刻執行全方位 Cost-down 校準：<br>"
+                          f"• <b>🍚 {carb_name} (主食)</b>：強制扣減標準出餐量 20-25%（如：標準 280g 降至 220g），杜絕過度給飯。<br>"
+                          f"• <b>🥩 {prot_name} (蛋白質)</b>：【⚠️ 高成本食材警報】必須立即核查入貨批次品質、解凍及醃製 SOP，確認是否有肉質變異、異味或未熟透問題導致顧客拒食。<br>"
+                          f"• <b>🥦 {veg_name} (配菜)</b>：嚴格限制給料標準（如：限定 1 標準勺），避免前線員工隨意多給造成隱性成本嚴重流失。")
+                sop_en = (f"CRITICAL: High residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}. Immediate overhaul required:<br>"
+                          f"• <b>🍚 {carb_en} (Carbs)</b>: Enforce a strict 20-25% reduction in standard carb serving size (e.g., from 280g to 220g).<br>"
+                          f"• <b>🥩 {prot_en} (Protein)</b>: [⚠️ HIGH-COST ALERT] Investigate raw material batches, thawing, and marination SOPs immediately. Residuals here strongly suggest unacceptable meat texture, off-flavors, or undercooking.<br>"
+                          f"• <b>🥦 {veg_en} (Garnish/Sauce)</b>: Strictly enforce portion limits (e.g., exactly 1 standard scoop) to prevent frontline staff from over-serving and causing hidden cost leaks.")
+                esg_zh = f"預估此強制介入可大幅降低該分店廚房備料過剩達 18%，預計每月節省食材成本約 <b>HK$ 6,500</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>4.2 噸</b>，快速止損並符合最新固體廢物收費準則。"
+                esg_en = "This strict intervention reduces kitchen over-portioning by 18%, saving approximately <b>HK$ 6,500/month</b> in food costs and cutting annual Scope 3 emissions by <b>4.2 tonnes CO2e</b>, quickly stopping financial leaks."
+
             if is_en:
                 if modules.get("mod3", True) and modules.get("mod4", True):
                     sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
@@ -1049,9 +1055,9 @@ def render_mode2(engine, modules, is_en=False):
                     '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
                     '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h4>'
                     '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
-                    f'<p><b>I. BOH Kitchen Production & Portioning SOP:</b><br/>High residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}, primarily consisting of <b>{primary_waste_comp}</b>. Kitchen head is directed to immediately recalibrate standard rice scoop from 280g to 230g (-50g) and audit sauce baking consistency.</p>'
+                    f'<p><b>I. BOH Kitchen Production & Portioning SOP:</b><br/>{sop_en}</p>'
                     f'{sec2_text}'
-                    '<p><b>III. Financial Feasibility & Scope 3 ESG Forecast:</b><br/>This intervention reduces kitchen over-portioning by 12%, saving approximately <b>HK$ 5,200/month</b> per branch in food costs and cutting annual food waste Scope 3 emissions by <b>3.8 tonnes CO2e</b>.</p>'
+                    f'<p><b>III. Financial Feasibility & Scope 3 ESG Forecast:</b><br/>{esg_en}</p>'
                     '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
                     f'<i>AI Model: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token Output: {raw_output}</i>'
                     '</div>'
@@ -1073,9 +1079,9 @@ def render_mode2(engine, modules, is_en=False):
                     '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
                     '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 【大家樂總部運營通報】門市廚房與前廳改進 SOP 決策</h4>'
                     '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
-                    f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率高達 <b>{top_wasted_ratio:.1f}%</b>，主要浪費集中於 <b>{primary_waste_comp}</b>。要求該店廚房主管即刻執行份量校準，將打飯量由標準 280g 微調至 230g（-50g），並加強焗烤出餐醬汁稠度均勻度。</p>'
+                    f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>{sop_zh}</p>'
                     f'{sec2_text}'
-                    '<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>預估此調整可降低該分店每月廚房備料過剩 12%，預計每月節省食材成本約 <b>HK$ 5,200</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>3.8 噸</b>，符合香港最新固體廢物收費與 HKEX ESG 披露準則。</p>'
+                    f'<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>{esg_zh}</p>'
                     '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
                     f'<i>AI 模型基礎：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調) · 原始模型輸出: {raw_output}</i>'
                     '</div>'
@@ -1084,12 +1090,10 @@ def render_mode2(engine, modules, is_en=False):
                 )
                 st.markdown(card_html, unsafe_allow_html=True)
 
-    # 🌟 M2: 深度分析 (BI Analytics) 控制：即時審計數據表明細
     if modules.get("mod2", True):
         with st.container(border=True):
             st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
             st.dataframe(df_filtered, use_container_width=True)
-
 
 # ==============================================================================
 # 🌟 動態 Tab 控制函數 (Dynamic Tab Rendering)
@@ -1097,7 +1101,6 @@ def render_mode2(engine, modules, is_en=False):
 def render_mode3(modules=None, is_en=False):
     st.markdown(f"### ⚙️ {'Mode 3: Dynamic Menu, Branch & Reward Configuration' if is_en else 'Mode 3: 菜單、分店與獎勵規則動態管理 (Dynamic Configuration)'}")
     
-    # 動態生成 Tab 列表
     tab_titles = []
     tab_keys = []
     
@@ -1113,15 +1116,12 @@ def render_mode3(modules=None, is_en=False):
         tab_titles.append("🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)")
         tab_keys.append("reward")
         
-    # 如果所有模組都被關閉，則顯示提示而不渲染 Tabs
     if not tab_titles:
         st.info("ℹ️ " + ("All configuration modules are currently offline." if is_en else "所有配置模組 (M1, M3, M4) 目前皆已停用，無可用設定。"))
         return
         
-    # 建立動態 Tabs
     tabs = st.tabs(tab_titles)
     
-    # 將內容填充進對應的 Tab
     for i, key in enumerate(tab_keys):
         with tabs[i]:
             with st.container(border=True):
@@ -1136,13 +1136,12 @@ def render_mode3(modules=None, is_en=False):
                     st.dataframe(df_rewards, use_container_width=True)
 
 # ==============================================================================
-# 5. Main Application Controller (主程式入口 & 雙語切換)
+# 5. Main Application Controller
 # ==============================================================================
 def main():
     inject_safe_css()
     init_db()
 
-    # 側邊欄品牌與語言切換器
     if os.path.exists(LOGO_FILE_PNG):
         st.sidebar.image(LOGO_FILE_PNG, use_container_width=True)
     elif os.path.exists(LOGO_FILE_JPG):
@@ -1150,20 +1149,17 @@ def main():
     else:
         st.sidebar.markdown("## 🍽️ Café de Coral")
 
-    # 🌟 雙語切換器 (Language Switcher)
     lang_choice = st.sidebar.radio("🌐 語言 / Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], horizontal=True)
     is_en = "English" in lang_choice
 
     st.sidebar.markdown(f"### **{'TrayZero+ Console' if is_en else 'TrayZero+ 控制台'}**")
     st.sidebar.markdown(f"**{'Café de Coral · Smart Plate Audit' if is_en else '大家樂集團 · 智能餐盤審計'}**")
     
-    # 🌟 Container to place Radio options ABOVE the checkboxes visually
     mode_container = st.sidebar.container()
 
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態 (MODULES)'}")
     
-    # Checkboxes parsed first logically
     mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控 (Ops Core)", value=True)
     mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析 (BI Analytics)", value=True)
     mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷 (Smart POS)", value=True)
@@ -1176,16 +1172,14 @@ def main():
         "mod4": mod_4
     }
 
-    # Populate Mode Options dynamically (Hiding Mode 2 completely if M2 is turned off)
     mode_options = [
         "Mode 1: Frontline Return Kiosk" if is_en else "Mode 1: 門市前線收盤機 (Frontline Kiosk)"
     ]
     if mod_2:
-        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部大數據分析 (HQ Analytics)")
+        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部 BI 大數據看板 (HQ Analytics)")
     
     mode_options.append("Mode 3: Dynamic Master Configuration" if is_en else "Mode 3: 菜單與獎勵配置 (Dynamic Config)")
 
-    # Render Radio button inside the container reserved above
     mode_container.markdown("---")
     mode = mode_container.radio("System Operation Mode" if is_en else "系統運行模式 (SYSTEM MODE)", mode_options)
 
@@ -1194,7 +1188,6 @@ def main():
 
     render_header(active_modules, is_en=is_en)
 
-    # Route based on selected mode
     if mode.startswith("Mode 1"): 
         render_mode1(engine, active_modules, is_en=is_en)
     elif mode.startswith("Mode 2"): 

@@ -701,7 +701,7 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
 # ==============================================================================
 def render_header(modules=None, is_en=False):
     title_text = "🍽️ TrayZero+ | Café de Coral Smart Plate Waste Audit & Loyalty System" if is_en else "🍽️ TrayZero+ | 大家樂智能餐盤廚餘審計與會員閉環系統"
-    sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine · 雙管線深度學習驅動"
+    sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine"
     
     header_html = (
         '<div class="pos-header-banner">'
@@ -914,7 +914,7 @@ def render_mode2(engine, modules, is_en=False):
             st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣 (2-Dimension Filter Matrix)'}")
             
             # 維度二：時間維度 (按日 / 按周 / 按月 / 按年 / 全部歷史)
-            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 按月分析 (Monthly)", "📈 按年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
+            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日分析 (Today)", "📅 本周分析 (This Week)", "🗓️ 本月分析 (Monthly)", "📈 本年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
             period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度 (Dimension 2: Time Period)", period_opts, horizontal=True, index=4)
 
             # 維度一：實體與菜單維度 (按門市分店 / 按餐點品項)
@@ -932,16 +932,16 @@ def render_mode2(engine, modules, is_en=False):
 
         # 依時間維度過濾
         now = datetime.datetime.now()
-        if "Today" in period_filter or "本日" in period_filter:
+        if "Today" in period_filter or "本日分析" in period_filter:
             today_str = now.strftime("%Y-%m-%d")
             df_filtered = df_filtered[df_filtered["audit_date"] == today_str]
-        elif "Week" in period_filter or "本周" in period_filter:
+        elif "Week" in period_filter or "本周分析" in period_filter:
             seven_days_ago = now - datetime.timedelta(days=7)
             df_filtered = df_filtered[df_filtered["parsed_dt"] >= seven_days_ago]
-        elif "Month" in period_filter or "按月" in period_filter:
+        elif "Month" in period_filter or "本月分析" in period_filter:
             this_month_str = now.strftime("%Y-%m")
             df_filtered = df_filtered[df_filtered["audit_month"] == this_month_str]
-        elif "Year" in period_filter or "按年" in period_filter:
+        elif "Year" in period_filter or "本年分析" in period_filter:
             this_year_str = str(now.year)
             df_filtered = df_filtered[df_filtered["audit_year"] == this_year_str]
 
@@ -1181,7 +1181,7 @@ def main():
         "Mode 1: Frontline Return Kiosk" if is_en else "Mode 1: 門市前線收盤機 (Frontline Kiosk)"
     ]
     if mod_2:
-        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部 BI 大數據看板 (HQ Analytics)")
+        mode_options.append("Mode 2: Operations HQ BI Analytics" if is_en else "Mode 2: 總部大數據分析 (HQ Analytics)")
     
     mode_options.append("Mode 3: Dynamic Master Configuration" if is_en else "Mode 3: 菜單與獎勵配置 (Dynamic Config)")
 

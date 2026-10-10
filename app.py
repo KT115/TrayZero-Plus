@@ -364,10 +364,10 @@ def init_db():
     ensure_audit_logs_schema(conn)
 
     default_dishes = [
-        ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
-        ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
-        ("D03", "燒味飯 (Siu Mei rice)", "白米飯", "燒味"),
-        ("D04", "干炒牛河 (Fried Beef Noodles)", "中式麵條", "牛肉")
+        ("D01", "一哥焗豬扒飯", "白米飯", "焗厚切豬扒"),
+        ("D05", "焗肉醬意粉", "意大利麵", "慢燉牛肉醬"),
+        ("D03", "燒味飯", "白米飯", "燒味"),
+        ("D04", "干炒牛河", "中式麵條", "牛肉")
     ]
     cur.execute("SELECT COUNT(*) FROM dishes")
     dish_count = cur.fetchone()[0]
@@ -379,19 +379,19 @@ def init_db():
     cur.execute("SELECT COUNT(*) FROM branches")
     if cur.fetchone()[0] == 0:
         default_branches = [
-            ("中環威靈頓街店", "Level A (商業核心區 / CBD)", "中西區", "白領上班族為主，午市尖峰翻檯率極高", 1200, 240),
-            ("沙田新城市廣場店", "Level B (住宅商場 / Residential)", "沙田區", "家庭客、長者與週末休閒客群", 1500, 260),
-            ("香港科技大學店 (HKUST)", "Level C (校園與青年區 / Campus)", "西貢區", "學生、教職員，運動量及食量顯著較大", 1800, 280),
-            ("將軍澳 Popcorn 店", "Level B (住宅商場 / Residential)", "西貢區", "家庭客及換乘鐵路客流", 1400, 260)
+            ("中環威靈頓街店", "Level A", "中西區", "白領上班族為主，午市尖峰翻檯率極高", 1200, 240),
+            ("沙田新城市廣場店", "Level B", "沙田區", "家庭客、長者與週末休閒客群", 1500, 260),
+            ("香港科技大學店", "Level C", "西貢區", "學生、教職員，運動量及食量顯著較大", 1800, 280),
+            ("將軍澳 Popcorn 店", "Level B", "西貢區", "家庭客及換乘鐵路客流", 1400, 260)
         ]
         cur.executemany("INSERT OR IGNORE INTO branches VALUES (?,?,?,?,?,?)", default_branches)
 
     cur.execute("SELECT COUNT(*) FROM rewards")
     if cur.fetchone()[0] == 0:
         default_rewards = [
-            ("R01", "極致光盤獎 (Ultra Clean)", 10.0, "Coupon + Points", "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】", True),
-            ("R02", "達標惜食獎 (Standard Clean)", 20.0, "Coupon", "【$2 堂食電子券】+【20 綠色積分】", True),
-            ("R03", "支持環保獎 (Green Return)", 100.0, "Points", "【10 綠色環保積分】", True)
+            ("R01", "極致光盤獎", 10.0, "Coupon + Points", "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】", True),
+            ("R02", "達標惜食獎", 20.0, "Coupon", "【$2 堂食電子券】+【20 綠色積分】", True),
+            ("R03", "支持環保獎", 100.0, "Points", "【10 綠色環保積分】", True)
         ]
         cur.executemany("INSERT OR IGNORE INTO rewards VALUES (?,?,?,?,?,?)", default_rewards)
 
@@ -409,8 +409,8 @@ def init_db():
                     str(r.get("audit_month", "2026-10")),
                     str(r.get("branch_name", "沙田新城市廣場店")),
                     str(r.get("branch_level", "Level B")),
-                    str(r.get("dish_name", "一哥焗豬扒飯 (Baked Pork Chop Rice)")),
-                    str(r.get("primary_waste", "主食白飯 (Carb)")),
+                    str(r.get("dish_name", "一哥焗豬扒飯")),
+                    str(r.get("primary_waste", "主食澱粉")),
                     float(r.get("waste_ratio", 25.0)),
                     float(r.get("waste_weight_g", 125.0)),
                     float(r.get("cost_waste_hkd", 5.6)),
@@ -419,7 +419,7 @@ def init_db():
                 ))
             conn.commit()
         except Exception as e:
-            print(f"載入種子數據異常: {e}")
+            pass
 
     conn.commit()
     conn.close()
@@ -435,10 +435,10 @@ def get_live_dishes():
             pass
     if df.empty:
         df = pd.DataFrame([
-            {"dish_id": "D01", "name": "一哥焗豬扒飯 (Baked Pork Chop Rice)", "main_carb": "白米飯", "protein": "焗厚切豬扒"},
-            {"dish_id": "D05", "name": "焗肉醬意粉 (Baked Spaghetti Bolognese)", "main_carb": "意大利麵", "protein": "慢燉牛肉醬"},
-            {"dish_id": "D03", "name": "燒味飯 (Siu Mei rice)", "main_carb": "白米飯", "protein": "燒味"},
-            {"dish_id": "D04", "name": "干炒牛河 (Fried Beef Noodles)", "main_carb": "中式麵條", "protein": "牛肉"}
+            {"dish_id": "D01", "name": "一哥焗豬扒飯", "main_carb": "白米飯", "protein": "焗厚切豬扒"},
+            {"dish_id": "D05", "name": "焗肉醬意粉", "main_carb": "意大利麵", "protein": "慢燉牛肉醬"},
+            {"dish_id": "D03", "name": "燒味飯", "main_carb": "白米飯", "protein": "燒味"},
+            {"dish_id": "D04", "name": "干炒牛河", "main_carb": "中式麵條", "protein": "牛肉"}
         ])
     return df
 
@@ -453,10 +453,10 @@ def get_live_branches():
             pass
     if df.empty:
         df = pd.DataFrame([
-            {"name": "中環威靈頓街店", "level": "Level A (商業核心區 / CBD)", "district": "中西區", "traffic": "白領上班族為主，午市尖峰翻檯率極高", "avg_covers": 1200, "base_rice_g": 240},
-            {"name": "沙田新城市廣場店", "level": "Level B (住宅商場 / Residential)", "district": "沙田區", "traffic": "家庭客、長者與週末休閒客群", "avg_covers": 1500, "base_rice_g": 260},
-            {"name": "香港科技大學店 (HKUST)", "level": "Level C (校園與青年區 / Campus)", "district": "西貢區", "traffic": "學生、教職員，運動量及食量顯著較大", "avg_covers": 1800, "base_rice_g": 280},
-            {"name": "將軍澳 Popcorn 店", "level": "Level B (住宅商場 / Residential)", "district": "西貢區", "traffic": "家庭客及換乘鐵路客流", "avg_covers": 1400, "base_rice_g": 260}
+            {"name": "中環威靈頓街店", "level": "Level A", "district": "中西區", "traffic": "白領上班族為主，午市尖峰翻檯率極高", "avg_covers": 1200, "base_rice_g": 240},
+            {"name": "沙田新城市廣場店", "level": "Level B", "district": "沙田區", "traffic": "家庭客、長者與週末休閒客群", "avg_covers": 1500, "base_rice_g": 260},
+            {"name": "香港科技大學店", "level": "Level C", "district": "西貢區", "traffic": "學生、教職員，運動量及食量顯著較大", "avg_covers": 1800, "base_rice_g": 280},
+            {"name": "將軍澳 Popcorn 店", "level": "Level B", "district": "西貢區", "traffic": "家庭客及換乘鐵路客流", "avg_covers": 1400, "base_rice_g": 260}
         ])
     return df
 
@@ -471,21 +471,21 @@ def evaluate_customer_rewards(waste_ratio_pct, is_en=False):
     if df_rew.empty:
         if waste_ratio_pct <= 10.0:
             desc = "【$3 Cash Voucher】+【50 Green Points】" if is_en else "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】"
-            tier = "Ultra Clean Plate" if is_en else "極致光盤獎 (Ultra Clean)"
+            tier = "Ultra Clean Plate" if is_en else "極致光盤獎"
             return desc, tier, "#10B981"
         elif waste_ratio_pct <= 20.0:
             desc = "【$2 Dining Voucher】+【20 Green Points】" if is_en else "【$2 堂食電子券】+【20 綠色積分】"
-            tier = "Standard Clean Plate" if is_en else "達標惜食獎 (Standard Clean)"
+            tier = "Standard Clean Plate" if is_en else "達標惜食獎"
             return desc, tier, "#059669"
         else:
             desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
-            tier = "Green Support" if is_en else "支持環保獎 (Green Return)"
+            tier = "Green Support" if is_en else "支持環保獎"
             return desc, tier, "#3B82F6"
     for _, r in df_rew.iterrows():
         if waste_ratio_pct <= float(r["max_waste_ratio"]):
             return r["reward_description"], r["tier_name"], "#10B981"
     desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
-    tier = "Green Support" if is_en else "支持環保獎 (Green Return)"
+    tier = "Green Support" if is_en else "支持環保獎"
     return desc, tier, "#64748B"
 
 def save_record(r):
@@ -508,8 +508,8 @@ def save_record(r):
             month_str,
             str(r.get("branch_name", "沙田新城市廣場店")),
             str(r.get("branch_level", "Level B")),
-            str(r.get("dish_name", "一哥焗豬扒飯 (Baked Pork Chop Rice)")),
-            str(r.get("primary_waste", "主食白飯 (Carb)")),
+            str(r.get("dish_name", "一哥焗豬扒飯")),
+            str(r.get("primary_waste", "主食澱粉")),
             float(r.get("waste_ratio", 0.0)),
             float(r.get("waste_weight_g", 0.0)),
             float(r.get("cost_waste_hkd", 0.0)),
@@ -519,7 +519,7 @@ def save_record(r):
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"資料庫寫入異常: {e}")
+        pass
         
     try:
         if os.path.exists(SEED_AUDIT_FILE):
@@ -529,8 +529,8 @@ def save_record(r):
                 "audit_month": month_str,
                 "branch_name": r.get("branch_name", "沙田新城市廣場店"),
                 "branch_level": r.get("branch_level", "Level B"),
-                "dish_name": r.get("dish_name", "一哥焗豬扒飯 (Baked Pork Chop Rice)"),
-                "primary_waste": r.get("primary_waste", "主食白飯 (Carb)"),
+                "dish_name": r.get("dish_name", "一哥焗豬扒飯"),
+                "primary_waste": r.get("primary_waste", "主食澱粉"),
                 "waste_ratio": float(r.get("waste_ratio", 0.0)),
                 "waste_weight_g": float(r.get("waste_weight_g", 0.0)),
                 "cost_waste_hkd": float(r.get("cost_waste_hkd", 0.0)),
@@ -539,7 +539,7 @@ def save_record(r):
             }])
             df_new.to_csv(SEED_AUDIT_FILE, mode='a', header=False, index=False, encoding='utf-8')
     except Exception as e:
-        print(f"CSV 附加異常: {e}")
+        pass
 
 def get_records():
     try:
@@ -549,7 +549,7 @@ def get_records():
         if not df.empty:
             return df
     except Exception as e:
-        print(f"讀取資料庫異常: {e}")
+        pass
         
     if os.path.exists(SEED_AUDIT_FILE):
         return pd.read_csv(SEED_AUDIT_FILE)
@@ -626,22 +626,22 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
     top_score = model_conf
 
     if ratio >= 0.90:
-        primary_cat = "Untouched Meal (90-100%)" if is_en else "完整未動餐點 (90-100% Untouched)"
+        primary_cat = "Untouched Meal" if is_en else "完整未動餐點"
         accent_color = "#DC2626"
     elif ratio >= 0.70:
-        primary_cat = "Heavy Leftovers (70-89%)" if is_en else "大量剩餘 (70-89% Heavy Leftovers)"
+        primary_cat = "Heavy Leftovers" if is_en else "大量剩餘"
         accent_color = "#EA580C"
     elif ratio >= 0.40:
-        primary_cat = "Half Eaten (40-69%)" if is_en else "食用過半 / 半數殘留 (40-69% Half Eaten)"
+        primary_cat = "Half Eaten" if is_en else "食用過半"
         accent_color = "#D97706"
     elif ratio >= 0.15:
-        primary_cat = "Minor Leftovers (15-39%)" if is_en else "少量殘留 (15-39% Minor Leftovers)"
+        primary_cat = "Minor Leftovers" if is_en else "少量殘留"
         accent_color = "#3B82F6"
     elif ratio >= 0.06:
-        primary_cat = "Almost Clean (6-14%)" if is_en else "極少殘留 / 接近光盤 (6-14% Almost Clean)"
+        primary_cat = "Almost Clean" if is_en else "極少殘留"
         accent_color = "#059669"
     else:
-        primary_cat = "Clean Plate (0-5%)" if is_en else "光盤 Clean Plate (0-5% Zero Waste)"
+        primary_cat = "Clean Plate" if is_en else "光盤"
         accent_color = "#10B981"
 
     img_draw = image.copy()
@@ -651,9 +651,9 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
     protein_ratio = max(0.0, min(1.0, ratio * 0.95))
     veg_ratio = max(0.0, min(1.0, ratio * 0.90))
 
-    cat_c = "Carbohydrates (Rice / Noodles)" if is_en else "主食澱粉 (Carb - 白米飯/麵食)"
-    cat_p = "Protein (Meat / Seafood)" if is_en else "蛋白質肉類 (Protein - 焗豬扒/肉類)"
-    cat_v = "Vegetables (Garnish / Sauce)" if is_en else "蔬菜配菜 (Vegetables - 醬汁/配菜)"
+    cat_c = "Carbohydrates" if is_en else "主食澱粉"
+    cat_p = "Protein" if is_en else "蛋白質肉類"
+    cat_v = "Vegetables" if is_en else "蔬菜配菜"
 
     items = [
         {"Category": cat_c, "Confidence": f"{top_score:.1%}", "Coverage": f"{carb_ratio*100:.1f}%", "raw_ratio": carb_ratio},
@@ -705,7 +705,7 @@ def render_mode1(engine, modules, is_en=False):
     df_d = get_live_dishes()
     
     branch_names = df_b["name"].tolist() if not df_b.empty else ["沙田新城市廣場店"]
-    dish_names = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯 (Baked Pork Chop Rice)"]
+    dish_names = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯"]
 
     with col_k1:
         with st.container(border=True):
@@ -753,7 +753,7 @@ def render_mode1(engine, modules, is_en=False):
                 else:
                     sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
         else:
-             sel_dish = "一哥焗豬扒飯 (Baked Pork Chop Rice)"
+             sel_dish = "一哥焗豬扒飯"
 
     with col_k2:
         if modules.get("mod1", True):
@@ -817,7 +817,7 @@ def render_mode1(engine, modules, is_en=False):
                         st.markdown(voucher_card_html, unsafe_allow_html=True)
 
                     if modules.get("mod2", True):
-                        st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比 (Macronutrient Breakdown)'}")
+                        st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比'}")
                         
                         c_carb, c_prot, c_veg = st.columns(3)
                         with c_carb:
@@ -946,7 +946,7 @@ def render_mode2(engine, modules, is_en=False):
         c1, c2 = st.columns(2)
         with c1:
             with st.container(border=True):
-                st.markdown(f"#### 🍲 {'Top Wasted Dishes Ranking' if is_en else '菜式平均殘食率排行 (Top Wasted Dishes)'}")
+                st.markdown(f"#### 🍲 {'Top Wasted Dishes Ranking' if is_en else '菜式平均殘食率排行'}")
                 chart_dish = alt.Chart(dish_summary).mark_bar(color="#DC2626").encode(
                     x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
                     y=alt.Y("dish_name:N", sort="-x", title="Dish Item" if is_en else "餐點名稱"),
@@ -956,7 +956,7 @@ def render_mode2(engine, modules, is_en=False):
 
         with c2:
             with st.container(border=True):
-                st.markdown(f"#### 🏪 {'Branch Benchmarks' if is_en else '門市殘食率分佈 (Branch Benchmarks)'}")
+                st.markdown(f"#### 🏪 {'Branch Benchmarks' if is_en else '門市殘食率分佈'}")
                 branch_summary = df_filtered.groupby("branch_name")["waste_ratio"].mean().reset_index()
                 chart_branch = alt.Chart(branch_summary).mark_bar(color="#D97706").encode(
                     x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
@@ -965,24 +965,20 @@ def render_mode2(engine, modules, is_en=False):
                 ).properties(height=280)
                 st.altair_chart(chart_branch, use_container_width=True)
 
-    # ==========================================================================
-    # 🌟 Pipeline 2: 動態門市級別 SOP 決策引擎 (依據餐點類型與殘食率動態產生，並加入 Cache 機制)
-    # ==========================================================================
     if modules.get("mod1", True):
         st.markdown("---")
-        st.markdown(f"### 🤖 {'Pipeline 2: Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else 'Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (Store-Level NLP Engine)'}")
+        st.markdown(f"### 🤖 {'Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else '門市級別智能營運與廚房備料 SOP 決策引擎'}")
 
-        target_store_name = ("All Café de Coral Branches (Overall Analysis)" if is_en else "大家樂全線門市 (整體綜合分析)") if sel_b == "ALL" else sel_b
-        top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯 (Baked Pork Chop Rice)"
+        target_store_name = ("All Café de Coral Branches" if is_en else "大家樂全線門市") if sel_b == "ALL" else sel_b
+        top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯"
         top_wasted_ratio = dish_summary.iloc[0]["waste_ratio"] if not dish_summary.empty else avg_w
-        primary_waste_comp = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns else ("Carbohydrates" if is_en else "主食白飯 (Carb)")
+        primary_waste_comp = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns else ("Carbohydrates" if is_en else "主食澱粉")
 
         with st.container(border=True):
             st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Sample Size' if is_en else '樣本規模'}：**{n:,} {'Trays' if is_en else '盤'}**")
             st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
             st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
-            # 🌟 導入 Prompt Hash Cache 解決 Pipeline 2 執行 20 秒造成的卡頓
             prompt_hash = f"{target_store_name}_{top_wasted_dish}_{top_wasted_ratio}_{n}"
             if "nlp_cache" not in st.session_state:
                 st.session_state["nlp_cache"] = {}
@@ -997,13 +993,11 @@ def render_mode2(engine, modules, is_en=False):
                         f"Repeated Occurrences: {n} in branch {target_store_name}."
                     )
                     try:
-                        # 使用 max_new_tokens 取代 max_length 大幅加快推論速度
                         raw_output = engine["nlp"](raw_prompt, max_new_tokens=45)[0]["generated_text"]
                     except Exception:
                         raw_output = "[Kitchen SOP] Recalibrated based on dynamic waste ratios."
                     st.session_state["nlp_cache"][prompt_hash] = raw_output
 
-            # 解析當前高損耗餐點包含的成分，實現精準建議
             if "豬" in top_wasted_dish or "Pork" in top_wasted_dish:
                 carb_name, prot_name, veg_name = "白飯", "焗厚切豬扒", "番茄/醬汁"
                 carb_en, prot_en, veg_en = "Rice", "Pork Chop", "Tomato/Sauce"
@@ -1020,7 +1014,6 @@ def render_mode2(engine, modules, is_en=False):
                 carb_name, prot_name, veg_name = "主食澱粉", "蛋白質肉類", "蔬菜配菜"
                 carb_en, prot_en, veg_en = "Carbs", "Protein", "Vegetables"
 
-            # 🌟 動態 SOP 產生邏輯 (Section 1 & 3)
             if top_wasted_ratio <= 15.0:
                 sop_zh = (f"監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率極低（僅 <b>{top_wasted_ratio:.1f}%</b>）。<br>"
                           f"• <b>🍚 {carb_name}</b>、<b>🥩 {prot_name}</b> 與 <b>🥦 {veg_name}</b> 消耗率極佳，現有食譜比例完美。要求該店廚房主管繼續嚴格執行當前標準 SOP，無需進行份量扣減。")
@@ -1051,7 +1044,6 @@ def render_mode2(engine, modules, is_en=False):
                 esg_zh = f"預估此強制介入可大幅降低該分店廚房備料過剩達 18%，預計每月節省食材成本約 <b>HK$ 6,500</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>4.2 噸</b>，快速止損並符合最新固體廢物收費準則。"
                 esg_en = "This strict intervention reduces kitchen over-portioning by 18%, saving approximately <b>HK$ 6,500/month</b> in food costs and cutting annual Scope 3 emissions by <b>4.2 tonnes CO2e</b>, quickly stopping financial leaks."
 
-            # 🌟 動態 Kiosk 與會員策略 (Section 2 - 解決商業利潤邏輯問題)
             if is_en:
                 if modules.get("mod3", True) and modules.get("mod4", True):
                     if top_wasted_ratio <= 15.0:
@@ -1084,15 +1076,15 @@ def render_mode2(engine, modules, is_en=False):
             else:
                 if modules.get("mod3", True) and modules.get("mod4", True):
                     if top_wasted_ratio <= 15.0:
-                        sec2_text = f"<p><b>二、 前廳自助點餐機與會員策略 (Kiosk & Member Strategy)：</b><br/>【保持現狀】因該餐點殘食率極低，點餐機維持標準出餐設定，<b>不主動推送「少飯扣減」優惠</b>以保障客單價與利潤。顧客用餐完畢若達成光盤，仍可獲發【<b>50 綠色積分</b>】作為常規環保鼓勵。</p>"
+                        sec2_text = f"<p><b>二、 前廳自助點餐機與會員策略：</b><br/>【保持現狀】因該餐點殘食率極低，點餐機維持標準出餐設定，<b>不主動推送「少飯扣減」優惠</b>以保障客單價與利潤。顧客用餐完畢若達成光盤，仍可獲發【<b>50 綠色積分</b>】作為常規環保鼓勵。</p>"
                     elif top_wasted_ratio <= 35.0:
-                        sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與 Club 100 App，針對【{top_wasted_dish}】於點餐介面加入「<b>少飯/少麵扣減 HK$ 1 現金</b>」輕度推薦選項；針對光盤完成顧客即時發放【<b>HK$ 2 堂食現金券 + 20 綠色積分</b>】。</p>"
+                        sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略：</b><br/>系統已自動聯動該門市之自助點餐機與 Club 100 App，針對【{top_wasted_dish}】於點餐介面加入「<b>少飯/少麵扣減 HK$ 1 現金</b>」輕度推薦選項；針對光盤完成顧客即時發放【<b>HK$ 2 堂食現金券 + 20 綠色積分</b>】。</p>"
                     else:
-                        sec2_text = f"<p><b>二、 前廳自助點餐機激進減量策略 (Aggressive Kiosk Reverse-POS)：</b><br/>系統已將【{top_wasted_dish}】於點餐機的預設份量改為「少飯/少麵」，並以紅字醒目提示「<b>響應環保，少飯即減 HK$ 2</b>」以強制止損；針對成功光盤顧客發放最高級別【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                        sec2_text = f"<p><b>二、 前廳自助點餐機激進減量策略：</b><br/>系統已將【{top_wasted_dish}】於點餐機的預設份量改為「少飯/少麵」，並以紅字醒目提示「<b>響應環保，少飯即減 HK$ 2</b>」以強制止損；針對成功光盤顧客發放最高級別【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
                 elif modules.get("mod3", True) and not modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{top_wasted_dish}】於點餐介面調整少飯現金扣減策略。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{top_wasted_dish}】於點餐介面調整少飯現金扣減策略。</p>"
                 elif not modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發常規綠色積分。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略：</b><br/>針對主動光盤顧客仍可由收盤處即時派發常規綠色積分。</p>"
                 else:
                     sec2_text = ""
 
@@ -1100,9 +1092,9 @@ def render_mode2(engine, modules, is_en=False):
                     '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
                     '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 【大家樂總部運營通報】門市廚房與前廳改進 SOP 決策</h4>'
                     '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
-                    f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>{sop_zh}</p>'
+                    f'<p><b>一、 後廚生產與備料調整 SOP：</b><br/>{sop_zh}</p>'
                     f'{sec2_text}'
-                    f'<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>{esg_zh}</p>'
+                    f'<p><b>三、 門市營運效益與 ESG 減碳預期：</b><br/>{esg_zh}</p>'
                     '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
                     f'<i>AI 模型基礎：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調) · 原始模型輸出: {raw_output}</i>'
                     '</div>'
@@ -1113,11 +1105,11 @@ def render_mode2(engine, modules, is_en=False):
 
     if modules.get("mod2", True):
         with st.container(border=True):
-            st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
+            st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表'}")
             st.dataframe(df_filtered, use_container_width=True)
 
 # ==============================================================================
-# 🌟 動態 Tab 控制函數 (Dynamic Tab Rendering)
+# 🌟 動態 Tab 控制函數
 # ==============================================================================
 def render_mode3(modules=None, is_en=False):
     st.markdown(f"### ⚙️ {'Dynamic Menu, Branch & Reward Configuration' if is_en else '菜單、分店與獎勵規則動態管理'}")
@@ -1126,19 +1118,19 @@ def render_mode3(modules=None, is_en=False):
     tab_keys = []
     
     if modules and modules.get("mod3", True):
-        tab_titles.append("🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)")
+        tab_titles.append("🍛 Menu Management" if is_en else "🍛 菜單管理")
         tab_keys.append("menu")
         
     if modules and modules.get("mod1", True):
-        tab_titles.append("🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)")
+        tab_titles.append("🏪 Branch Management" if is_en else "🏪 門市管理")
         tab_keys.append("branch")
         
     if modules and modules.get("mod4", True):
-        tab_titles.append("🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)")
+        tab_titles.append("🎁 Reward Rules" if is_en else "🎁 獎勵規則")
         tab_keys.append("reward")
         
     if not tab_titles:
-        st.info("ℹ️ " + ("All configuration modules are currently offline." if is_en else "所有配置模組 (M1, M3, M4) 目前皆已停用，無可用設定。"))
+        st.info("ℹ️ " + ("All configuration modules are currently offline." if is_en else "所有配置模組目前皆已停用，無可用設定。"))
         return
         
     tabs = st.tabs(tab_titles)
@@ -1181,9 +1173,9 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態'}")
     
-    mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控 ", value=True)
+    mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控", value=True)
     mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析", value=True)
-    mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷 ", value=True)
+    mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷", value=True)
     mod_4 = st.sidebar.checkbox("M4: Loyalty Loop" if is_en else "M4: 會員閉環", value=True)
 
     active_modules = {
@@ -1209,9 +1201,9 @@ def main():
 
     render_header(active_modules, is_en=is_en)
 
-    if mode.startswith("Mode 1"): 
+    if "Frontline" in mode or "收盤機" in mode: 
         render_mode1(engine, active_modules, is_en=is_en)
-    elif mode.startswith("Mode 2"): 
+    elif "Operations" in mode or "看板" in mode: 
         render_mode2(engine, active_modules, is_en=is_en)
     else: 
         render_mode3(active_modules, is_en=is_en)

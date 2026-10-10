@@ -1,30 +1,30 @@
+import os
+import datetime
+import sqlite3
 import streamlit as st
 import pandas as pd
 import numpy as np
-import datetime
-import os
-import sqlite3
-import torch
 from PIL import Image, ImageDraw
-import altair as alt
+import torch
 from transformers import (
     AutoImageProcessor, 
-    AutoModelForImageClassification, 
+    AutoModelForImageClassification,
     pipeline
 )
+import altair as alt
 
 # ==============================================================================
-# 0. Page Configuration
+# 0. Primary Streamlit Execution Configuration
 # ==============================================================================
 st.set_page_config(
-    page_title="TrayZero+ | Café de Coral Smart Plate Audit", 
+    page_title="TrayZero+ | 智能餐盤審計與會員獎勵系統", 
     page_icon="🍽️", 
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ==============================================================================
-# 1. Global Paths & Fast-Casual POS Enterprise CSS Theme (高對比純白底主題)
+# 1. Global Paths & Fast-Casual POS Enterprise CSS Theme (高對比自適應主題)
 # ==============================================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BRANCH_FILE = os.path.join(BASE_DIR, "master_branches.csv")
@@ -121,7 +121,7 @@ def inject_safe_css():
             text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25) !important;
         }
 
-        /* 徹底消滅深色 UI：所有輸入框、下拉選單、文本框、上傳器強制為純白背景 (#FFFFFF) 與深黑文字 (#0F172A) */
+        /* 🌟 徹底消滅深色 UI：所有輸入框、下拉選單、文本框、上傳器強制為純白背景 (#FFFFFF) 與深黑文字 (#0F172A) */
         div[data-baseweb="select"],
         div[data-baseweb="select"] *,
         div[data-baseweb="input"],
@@ -163,7 +163,7 @@ def inject_safe_css():
             -webkit-text-fill-color: #0F172A !important;
         }
 
-        /* 檔案上傳元件 (stFileUploader) 純白底與深黑字 */
+        /* 🌟 徹底修復檔案上傳元件 (stFileUploader) 黑底問題：全部強制為純白底與深黑字 */
         div[data-testid="stFileUploader"],
         div[data-testid="stFileUploader"] *,
         section[data-testid="stFileUploaderDropzone"],
@@ -191,8 +191,6 @@ def inject_safe_css():
             color: #0F172A !important;
             border: 1px solid #CBD5E1 !important;
         }
-
-        /* Label 標籤文字加粗深黑 */
         [data-testid="stSelectbox"] label,
         [data-testid="stTextInput"] label,
         [data-testid="stRadio"] label,
@@ -202,12 +200,12 @@ def inject_safe_css():
             font-size: 0.92rem !important;
         }
 
-        /* 原生指標卡片 (st.metric) 高對比顯色保證，防止數值被截斷 */
+        /* 原生指標卡片 (st.metric) 高對比顯色保證 */
         [data-testid="stMetric"] {
             background-color: #FFFFFF !important;
             border: 1.5px solid #CBD5E1 !important;
             border-radius: 10px !important;
-            padding: 12px 14px !important;
+            padding: 12px 16px !important;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         }
         [data-testid="stMetric"] * {
@@ -227,7 +225,7 @@ def inject_safe_css():
             text-overflow: clip !important;
         }
 
-        /* Mode 3 分頁標籤 (Tabs) 防隱形：非選中狀態強制深黑灰字體，選中狀態為大家樂品牌紅 */
+        /* 🌟 Mode 3 分頁標籤 (Tabs) 防隱形：非選中狀態強制深黑灰字體，選中狀態為大家樂品牌紅 */
         div[data-baseweb="tab-list"] {
             gap: 8px !important;
             border-bottom: 2px solid #CBD5E1 !important;
@@ -276,20 +274,18 @@ def inject_safe_css():
             margin: 14px 0 !important;
             color: #78350F !important;
         }
-
-        /* 容器邊框背景維持白色 */
-        [data-testid="stVerticalBlockBorderWrapper"],
-        [data-testid="stVerticalBlockBorderWrapper"] > div {
-            background-color: #FFFFFF !important;
-        }
     </style>
     """, unsafe_allow_html=True)
 
 # ==============================================================================
-# 2. Database Connection & Self-Healing Data Store (資料庫連線與自動修復)
+# 2. Database Connection & Data Store (資料庫與本地儲存)
 # ==============================================================================
 def db_conn(): 
-    return sqlite3.connect(DB_FILE, check_same_thread=False)
+    try:
+        conn = sqlite3.connect(DB_FILE, check_same_thread=False, timeout=10)
+        return conn
+    except Exception:
+        return sqlite3.connect("/tmp/trayzero_audit.db", check_same_thread=False)
 
 def ensure_audit_logs_schema(conn):
     cur = conn.cursor()
@@ -312,7 +308,7 @@ def ensure_audit_logs_schema(conn):
     """)
     conn.commit()
     
-    # 動態欄位檢查與無損熱遷移 (徹底杜絕 sqlite3.OperationalError)
+    # 🌟 動態欄位檢查與無損熱遷移 (徹底杜絕 sqlite3.OperationalError: table audit_logs has no column named audit_date)
     cur.execute("PRAGMA table_info(audit_logs)")
     existing_cols = {col[1] for col in cur.fetchall()}
     expected_cols = [
@@ -377,7 +373,7 @@ def init_db():
     conn.commit()
     ensure_audit_logs_schema(conn)
 
-    # 初始化預設菜單 (4 種經典餐點)
+    # 初始化預設菜單 (依據最新指示改為 4 種經典餐點)
     default_dishes = [
         ("D01", "一哥焗豬扒飯 (Baked Pork Chop Rice)", "白米飯", "焗厚切豬扒"),
         ("D05", "焗肉醬意粉 (Baked Spaghetti Bolognese)", "意大利麵", "慢燉牛肉醬"),
@@ -480,40 +476,34 @@ def get_live_branches():
 
 def get_live_rewards():
     conn = db_conn()
-    df = pd.read_sql_query("SELECT * FROM rewards WHERE is_active=1 ORDER BY max_waste_ratio ASC", conn)
+    df = pd.read_sql_query("SELECT * FROM rewards WHERE is_active = 1 ORDER BY max_waste_ratio ASC", conn)
     conn.close()
-    if df.empty and os.path.exists(REWARD_FILE):
-        try:
-            df = pd.read_csv(REWARD_FILE)
-            df = df[df["is_active"] == True]
-        except Exception:
-            pass
-    if df.empty:
-        df = pd.DataFrame([
-            {"reward_id": "R01", "tier_name": "極致光盤獎 (Ultra Clean)", "max_waste_ratio": 10.0, "reward_type": "Coupon + Points", "reward_description": "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】", "is_active": True},
-            {"reward_id": "R02", "tier_name": "達標惜食獎 (Standard Clean)", "max_waste_ratio": 20.0, "reward_type": "Coupon", "reward_description": "【$2 堂食電子券】+【20 綠色積分】", "is_active": True},
-            {"reward_id": "R03", "tier_name": "支持環保獎 (Green Return)", "max_waste_ratio": 100.0, "reward_type": "Points", "reward_description": "【10 綠色環保積分】", "is_active": True}
-        ])
     return df
 
 def evaluate_customer_rewards(waste_ratio_pct, is_en=False):
     df_rew = get_live_rewards()
-    for _, row in df_rew.iterrows():
-        if waste_ratio_pct <= float(row["max_waste_ratio"]):
-            tier = row["tier_name"]
-            desc = row["reward_description"]
-            color = "#10B981" if "極致" in tier or "Ultra" in tier else ("#3B82F6" if "達標" in tier or "Standard" in tier else "#F59E0B")
-            if is_en:
-                if "極致" in tier or "Ultra" in tier:
-                    return "【$3 Dine-in Cash Coupon】+【50 Green Points】+【Half-price Iced Lemon Tea】", "Ultra Clean Plate (0-10%)", color
-                elif "達標" in tier or "Standard" in tier:
-                    return "【$2 Dine-in Electronic Coupon】+【20 Green Points】", "Standard Food Saver (11-20%)", color
-                else:
-                    return "【10 Green Sustainability Points】", "Green Tray Return Incentive", color
-            return desc, tier, color
-    return ("【感謝支持減碳回收】獲得 5 綠色點數", "參與獎 (Participation)", "#6B7280")
+    if df_rew.empty:
+        if waste_ratio_pct <= 10.0:
+            desc = "【$3 Cash Voucher】+【50 Green Points】" if is_en else "【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】"
+            tier = "Ultra Clean Plate" if is_en else "極致光盤獎 (Ultra Clean)"
+            return desc, tier, "#10B981"
+        elif waste_ratio_pct <= 20.0:
+            desc = "【$2 Dining Voucher】+【20 Green Points】" if is_en else "【$2 堂食電子券】+【20 綠色積分】"
+            tier = "Standard Clean Plate" if is_en else "達標惜食獎 (Standard Clean)"
+            return desc, tier, "#059669"
+        else:
+            desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
+            tier = "Green Support" if is_en else "支持環保獎 (Green Return)"
+            return desc, tier, "#3B82F6"
+    for _, r in df_rew.iterrows():
+        if waste_ratio_pct <= float(r["max_waste_ratio"]):
+            return r["reward_description"], r["tier_name"], "#10B981"
+    desc = "【10 Green Points】" if is_en else "【10 綠色環保積分】"
+    tier = "Green Support" if is_en else "支持環保獎 (Green Return)"
+    return desc, tier, "#64748B"
 
 def save_record(r):
+    # 🌟 每次寫入前確保資料庫結構具有完整欄位 (杜絕所有版本不相容拋錯)
     ts_str = str(r.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     date_str = str(r.get("audit_date", ts_str.split(" ")[0] if " " in ts_str else ts_str[:10]))
     month_str = str(r.get("audit_month", date_str[:7]))
@@ -567,25 +557,29 @@ def save_record(r):
         print(f"CSV 附加異常: {e}")
 
 def get_records():
-    conn = db_conn()
     try:
-        ensure_audit_logs_schema(conn)
+        conn = db_conn()
         df = pd.read_sql_query("SELECT * FROM audit_logs ORDER BY id DESC", conn)
-    except Exception:
-        df = pd.DataFrame()
-    conn.close()
-    return df
+        conn.close()
+        if not df.empty:
+            return df
+    except Exception as e:
+        print(f"讀取資料庫異常: {e}")
+        
+    if os.path.exists(SEED_AUDIT_FILE):
+        return pd.read_csv(SEED_AUDIT_FILE)
+    return pd.DataFrame()
 
 # ==============================================================================
-# 3. AI Pipeline Loader (雙管線深度學習引擎)
+# 3. AI Engine (載入今日新微調之雙管線 Transformer 模型)
 # ==============================================================================
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     device_id = 0 if torch.cuda.is_available() else -1
     
     # --------------------------------------------------------------------------
-    # Pipeline 1: 視覺殘食審計 (今日微調模型: kktlau115/trayzero-frozen-swin-model)
+    # Pipeline 1: 視覺殘食審計 (今日新微調模型: kktlau115/trayzero-frozen-swin-model)
     # --------------------------------------------------------------------------
     p1_model_id = "kktlau115/trayzero-frozen-swin-model"
     try:
@@ -611,7 +605,7 @@ def load_ai_engine():
         clip_classifier = None
 
     # --------------------------------------------------------------------------
-    # Pipeline 2: 智能廚房 SOP 預警與會員激勵生成 (微調模型: kktlau115/trayzero-flant5-sop-alert)
+    # Pipeline 2: 智能廚房 SOP 預警與會員激勵生成 (今日新微調模型: kktlau115/trayzero-flant5-sop-alert)
     # --------------------------------------------------------------------------
     p2_model_id = "kktlau115/trayzero-flant5-sop-alert"
     try:
@@ -633,9 +627,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
     image_rgb = image.convert("RGB")
     width, height = image_rgb.size
     
-    # --------------------------------------------------------------------------
-    # Pipeline 1: 視覺殘食審計 (Swin Transformer 預測)
-    # --------------------------------------------------------------------------
     inputs = engine["processor"](images=image_rgb, return_tensors="pt").to(engine["device"])
     with torch.no_grad():
         outputs = engine["model"](**inputs)
@@ -643,7 +634,7 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
         if logits.shape[-1] == 5:
             probs = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy()
             pred_idx = int(np.argmax(probs))
-            # 5 個殘食等級之校準中位數 (連續機率加權期望值，徹底解決固定 92% 或階梯跳躍問題)
+            # 5 個殘食等級之校準中位數 (連續機率加權期望值，徹底解決固定 92% 或離散階梯問題)
             class_midpoints = np.array([0.025, 0.125, 0.325, 0.600, 0.880])
             ratio = float(np.sum(probs * class_midpoints))
             model_conf = float(probs[pred_idx])
@@ -657,6 +648,8 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
             model_conf = 0.88
         ratio = max(0.0, min(1.0, ratio))
 
+    # 🌟 徹底移除 CLIP 暴力覆蓋殘食率的錯誤規則 (先前因 untouched 關鍵詞導致所有菜餚都被強制變為 92.0%)
+    # 完全回歸並信賴用戶訓練之微調 Swin Transformer 視覺模型預測結果！
     top_score = model_conf
 
     # 6 級分級標準
@@ -717,14 +710,42 @@ def auto_detect_dish_clip(image, candidate_dishes, engine):
 # ==============================================================================
 # 4. Mode Renderers (前線收盤 Mode 1、總部 BI Mode 2 與 配置 Mode 3)
 # ==============================================================================
-def render_header(is_en=False):
+def render_header(modules=None, is_en=False):
     title_text = "🍽️ TrayZero+ | Café de Coral Smart Plate Waste Audit & Loyalty System" if is_en else "🍽️ TrayZero+ | 大家樂智能餐盤廚餘審計與會員閉環系統"
     sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine · 雙管線深度學習驅動"
+    
+    badges_html = ""
+    if modules:
+        mod_defs = [
+            ("M1", "M1: Ops Core" if is_en else "M1: 營運監控", modules.get("mod1", True)),
+            ("M2", "M2: BI Analytics" if is_en else "M2: 深度分析", modules.get("mod2", True)),
+            ("M3", "M3: Smart POS" if is_en else "M3: 精準營銷", modules.get("mod3", True)),
+            ("M4", "M4: Loyalty Loop" if is_en else "M4: 會員閉環", modules.get("mod4", True)),
+        ]
+        badges_list = []
+        for code, label, is_active in mod_defs:
+            if is_active:
+                bg = "rgba(16, 185, 129, 0.25)"
+                border = "#10B981"
+                text_c = "#FFFFFF"
+                status_icon = "🟢 ACTIVE" if is_en else "🟢 運行中"
+            else:
+                bg = "rgba(148, 163, 184, 0.2)"
+                border = "#94A3B8"
+                text_c = "#CBD5E1"
+                status_icon = "⚪ OFFLINE" if is_en else "⚪ 已停用"
+            badges_list.append(
+                f'<span style="background: {bg}; border: 1px solid {border}; color: {text_c}; border-radius: 6px; padding: 4px 10px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">'
+                f'<b>{label}</b> [{status_icon}]</span>'
+            )
+        badges_html = f'<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">{" ".join(badges_list)}</div>'
+
     header_html = (
         '<div class="pos-header-banner">'
-        '<div>'
+        '<div style="width: 100%;">'
         f'<h2 class="pos-header-title">{title_text}</h2>'
         f'<div style="color: #FEF3C7; font-size: 0.88rem; font-weight: 700; margin-top: 4px;">{sub_text}</div>'
+        f'{badges_html}'
         '</div>'
         '</div>'
     )
@@ -742,16 +763,23 @@ def render_mode1(engine, modules, is_en=False):
     dish_names = df_d["name"].tolist() if not df_d.empty else ["一哥焗豬扒飯 (Baked Pork Chop Rice)"]
 
     with col_k1:
+        # Step 1: 門市與會員身份辨識 (受 M4: Loyalty Loop 控制)
         with st.container(border=True):
             st.markdown(f"#### {'1. Store & Member Identification' if is_en else '1. 門市與會員身份辨識'}")
             sel_branch = st.selectbox("Current Operating Branch" if is_en else "當前運行分店", branch_names, key="kiosk_branch")
-            member_id = st.text_input(
-                "Club 100 Member QR / Mobile (Leave blank for guest)" if is_en else "Club 100 會員 QR Code / 手機號碼 (留空代表匿名訪客)", 
-                value="", 
-                placeholder="e.g. M882190", 
-                key="kiosk_member"
-            )
+            
+            if modules.get("mod4", True):
+                member_id = st.text_input(
+                    "Club 100 Member QR / Mobile (Leave blank for guest)" if is_en else "Club 100 會員 QR Code / 手機號碼 (留空代表匿名訪客)", 
+                    value="", 
+                    placeholder="e.g. M882190", 
+                    key="kiosk_member"
+                )
+            else:
+                member_id = "ANON"
+                st.info("ℹ️ " + ("M4 Loyalty Loop module disabled: Operating in anonymous guest mode." if is_en else "M4 會員閉環模組已停用：切換為訪客匿名收盤模式 (Guest Mode)。"))
 
+        # Step 2: 餐盤影像獲取 (基礎硬件攝像通道)
         with st.container(border=True):
             st.markdown(f"#### {'2. Tray Image Ingest (Auto-Audit on Upload)' if is_en else '2. 餐盤影像獲取 (上傳後自動啟動審計)'}")
             src_opts = ["Upload Photo / Test Image", "Live Camera Capture"] if is_en else ["測試圖片 / 拍照上傳", "即時相機拍攝"]
@@ -778,113 +806,130 @@ def render_mode1(engine, modules, is_en=False):
             else:
                 st.info("💡 " + ("Please upload or capture a plate photo. The system will auto-audit upon ingest." if is_en else "請上傳餐盤照片，系統將自動啟動視覺審計與數據記錄。"))
 
+        # Step 3: 菜式辨識與確認 (受 M3: Smart POS 控制)
         with st.container(border=True):
             st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
-            if image:
-                auto_dish, dish_conf = auto_detect_dish_clip(image, dish_names, engine)
-                st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
-                sel_dish = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", dish_names, index=dish_names.index(auto_dish) if auto_dish in dish_names else 0)
+            if modules.get("mod3", True):
+                if image:
+                    auto_dish, dish_conf = auto_detect_dish_clip(image, dish_names, engine)
+                    st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
+                    sel_dish = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", dish_names, index=dish_names.index(auto_dish) if auto_dish in dish_names else 0)
+                else:
+                    sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
             else:
-                sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
+                st.info("ℹ️ " + ("M3 Smart POS module disabled: CLIP AI recommendation offline, defaulting to manual menu selection." if is_en else "M3 精準營銷 (Smart POS) 模組已停用：CLIP AI 智慧菜式推薦已關閉，切換為前線標準手動選單模式。"))
+                sel_dish = st.selectbox("Select Target Dish" if is_en else "手動選擇餐點菜式", dish_names, index=0)
 
     with col_k2:
+        # Step 4: 深度學習審計與即時回饋 (受 M1: Ops Core, M2: BI Analytics, M4: Loyalty Loop 控制)
         with st.container(border=True):
             st.markdown(f"#### {'4. Deep Learning Audit & Instant Feedback' if is_en else '4. 深度學習審計與即時回饋'}")
 
-            # 避免重複刷新寫入資料庫：僅新照片執行一次推論與寫入
             if image is not None:
-                with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
-                    annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
-                    
-                    waste_pct = round(ratio * 100, 1)
-                    now = datetime.datetime.now()
+                # 🌟 M1: 營運監控 (Ops Core) 開關控制
+                if modules.get("mod1", True):
+                    with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
+                        annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
+                        
+                        waste_pct = round(ratio * 100, 1)
+                        now = datetime.datetime.now()
 
-                    b_row = df_b[df_b["name"] == sel_branch]
-                    base_rice = float(b_row.iloc[0]["base_rice_g"]) if not b_row.empty else 250.0
-                    b_level = b_row.iloc[0]["level"] if not b_row.empty else "Level A"
-                    
-                    waste_weight = round((base_rice + 200.0) * (waste_pct / 100.0), 1)
-                    waste_cost = round(waste_weight * 0.045, 2)
-                    waste_carbon = round(waste_weight * 0.0028, 3)
+                        b_row = df_b[df_b["name"] == sel_branch]
+                        base_rice = float(b_row.iloc[0]["base_rice_g"]) if not b_row.empty else 250.0
+                        b_level = b_row.iloc[0]["level"] if not b_row.empty else "Level A"
+                        
+                        waste_weight = round((base_rice + 200.0) * (waste_pct / 100.0), 1)
+                        waste_cost = round(waste_weight * 0.045, 2)
+                        waste_carbon = round(waste_weight * 0.0028, 3)
 
-                    voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
+                        # 避免重複刷新寫入資料庫
+                        if st.session_state.get("last_processed_img_id") != img_id:
+                            save_record({
+                                "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
+                                "audit_date": now.strftime("%Y-%m-%d"),
+                                "audit_month": now.strftime("%Y-%m"),
+                                "branch_name": sel_branch, 
+                                "branch_level": b_level,
+                                "dish_name": sel_dish, 
+                                "primary_waste": items[0]["Category"], 
+                                "waste_ratio": waste_pct, 
+                                "waste_weight_g": waste_weight,
+                                "cost_waste_hkd": waste_cost, 
+                                "co2_emission_kg": waste_carbon,
+                                "member_id": member_id if member_id else "ANON"
+                            })
+                            st.session_state["last_processed_img_id"] = img_id
 
-                    if st.session_state.get("last_processed_img_id") != img_id:
-                        save_record({
-                            "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"), 
-                            "audit_date": now.strftime("%Y-%m-%d"),
-                            "audit_month": now.strftime("%Y-%m"),
-                            "branch_name": sel_branch, 
-                            "branch_level": b_level,
-                            "dish_name": sel_dish,
-                            "primary_waste": items[0]["Category"], 
-                            "waste_ratio": waste_pct, 
-                            "waste_weight_g": waste_weight,
-                            "cost_waste_hkd": waste_cost, 
-                            "co2_emission_kg": waste_carbon,
-                            "member_id": member_id if member_id else "ANON"
-                        })
-                        st.session_state["last_processed_img_id"] = img_id
+                    st.image(annotated_img, caption=f"{'Visual Audit Result' if is_en else '視覺審計結果'} ({'Waste Ratio' if is_en else '殘食率'}: {waste_pct}%)", use_container_width=True)
 
-                st.image(annotated_img, caption=f"{'Visual Audit Result' if is_en else '視覺審計結果'} ({'Waste Ratio' if is_en else '殘食率'}: {waste_pct}%)", use_container_width=True)
+                    m_col1, m_col2, m_col3 = st.columns(3)
+                    with m_col1:
+                        st.metric("Waste Ratio" if is_en else "殘食百分比", f"{waste_pct}%")
+                    with m_col2:
+                        st.metric("Waste Cost" if is_en else "估算浪費成本", f"HK$ {waste_cost}")
+                    with m_col3:
+                        st.metric("Scope 3 CO2" if is_en else "產生碳排放", f"{waste_carbon} kg")
 
-                m_col1, m_col2, m_col3 = st.columns(3)
-                with m_col1:
-                    st.metric("Waste Ratio" if is_en else "殘食百分比", f"{waste_pct}%")
-                with m_col2:
-                    st.metric("Waste Cost" if is_en else "估算浪費成本", f"HK$ {waste_cost}")
-                with m_col3:
-                    st.metric("Scope 3 CO2" if is_en else "產生碳排放", f"{waste_carbon} kg")
+                    # 🌟 M4: 會員閉環 (Loyalty Loop) 開關控制
+                    if modules.get("mod4", True):
+                        voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
+                        reward_header = f"🎉 {'Club 100 Reward' if is_en else 'Club 100 獎勵發放'}：{tier_name}"
+                        guest_label = member_id if (member_id and member_id != "ANON") else ("Guest" if is_en else "訪客")
+                        credited_msg = f"{'Digital coupon credited to account' if is_en else '電子券已即時存入會員帳戶'} ({guest_label})，{'redeemable at Café de Coral.' if is_en else '可於大家樂門市下次消費直接扣減。'}"
+                        voucher_card_html = (
+                            '<div class="voucher-box">'
+                            f'<h4 style="margin: 0 0 6px 0; color: #92400E; font-weight: 800;">{reward_header}</h4>'
+                            f'<div style="font-size: 1.05rem; font-weight: 800; color: #B45309;">{voucher_text}</div>'
+                            f'<div style="font-size: 0.82rem; margin-top: 5px; color: #78350F; font-weight: 600;">{credited_msg}</div>'
+                            '</div>'
+                        )
+                        st.markdown(voucher_card_html, unsafe_allow_html=True)
+                    else:
+                        st.info("ℹ️ " + ("M4 Loyalty Loop module disabled: Club 100 customer reward vouchers are paused." if is_en else "M4 會員閉環 (Loyalty Loop) 模組已停用：Club 100 惜食獎勵禮券與積分發放已暫停。"))
 
-                reward_header = f"🎉 {'Club 100 Reward' if is_en else 'Club 100 獎勵發放'}：{tier_name}"
-                guest_label = member_id if member_id else ("Guest" if is_en else "訪客")
-                credited_msg = f"{'Digital coupon credited to account' if is_en else '電子券已即時存入會員帳戶'} ({guest_label})，{'redeemable at Café de Coral.' if is_en else '可於大家樂門市下次消費直接扣減。'}"
-                voucher_card_html = (
-                    '<div class="voucher-box">'
-                    f'<h4 style="margin: 0 0 6px 0; color: #92400E; font-weight: 800;">{reward_header}</h4>'
-                    f'<div style="font-size: 1.05rem; font-weight: 800; color: #B45309;">{voucher_text}</div>'
-                    f'<div style="font-size: 0.82rem; margin-top: 5px; color: #78350F; font-weight: 600;">{credited_msg}</div>'
-                    '</div>'
-                )
-                st.markdown(voucher_card_html, unsafe_allow_html=True)
+                    # 🌟 M2: 深度分析 (BI Analytics) 開關控制 - 各大食材分項佔比
+                    if modules.get("mod2", True):
+                        st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比 (Macronutrient Breakdown)'}")
+                        
+                        c_carb, c_prot, c_veg = st.columns(3)
+                        with c_carb:
+                            st.metric("🍚 " + ("Carbohydrates" if is_en else "主食澱粉"), items[0]["Coverage"])
+                            st.progress(min(1.0, float(items[0]["raw_ratio"])))
+                        with c_prot:
+                            st.metric("🥩 " + ("Protein" if is_en else "蛋白質肉類"), items[1]["Coverage"])
+                            st.progress(min(1.0, float(items[1]["raw_ratio"])))
+                        with c_veg:
+                            st.metric("🥦 " + ("Vegetables" if is_en else "蔬菜配菜"), items[2]["Coverage"])
+                            st.progress(min(1.0, float(items[2]["raw_ratio"])))
 
-                # 各大食材分項佔比：進度條 + 原生資料表格
-                st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比 (Macronutrient Breakdown)'}")
-                
-                c_carb, c_prot, c_veg = st.columns(3)
-                with c_carb:
-                    st.metric("🍚 " + ("Carbohydrates" if is_en else "主食澱粉"), items[0]["Coverage"])
-                    st.progress(min(1.0, float(items[0]["raw_ratio"])))
-                with c_prot:
-                    st.metric("🥩 " + ("Protein" if is_en else "蛋白質肉類"), items[1]["Coverage"])
-                    st.progress(min(1.0, float(items[1]["raw_ratio"])))
-                with c_veg:
-                    st.metric("🥦 " + ("Vegetables" if is_en else "蔬菜配菜"), items[2]["Coverage"])
-                    st.progress(min(1.0, float(items[2]["raw_ratio"])))
+                        col_cat_title = "Ingredient Category" if is_en else "食材分類項目"
+                        col_conf_title = "AI Confidence" if is_en else "AI 置信度"
+                        col_cov_title = "Residual Coverage" if is_en else "殘留面積佔比"
 
-                col_cat_title = "Ingredient Category" if is_en else "食材分類項目"
-                col_conf_title = "AI Confidence" if is_en else "AI 置信度"
-                col_cov_title = "Residual Coverage" if is_en else "殘留面積佔比"
-
-                df_breakdown = pd.DataFrame([
-                    {
-                        col_cat_title: f"🍚 {items[0]['Category']}",
-                        col_conf_title: items[0]["Confidence"],
-                        col_cov_title: items[0]["Coverage"]
-                    },
-                    {
-                        col_cat_title: f"🥩 {items[1]['Category']}",
-                        col_conf_title: items[1]["Confidence"],
-                        col_cov_title: items[1]["Coverage"]
-                    },
-                    {
-                        col_cat_title: f"🥦 {items[2]['Category']}",
-                        col_conf_title: items[2]["Confidence"],
-                        col_cov_title: items[2]["Coverage"]
-                    }
-                ])
-                st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
-
+                        df_breakdown = pd.DataFrame([
+                            {
+                                col_cat_title: f"🍚 {items[0]['Category']}",
+                                col_conf_title: items[0]["Confidence"],
+                                col_cov_title: items[0]["Coverage"]
+                            },
+                            {
+                                col_cat_title: f"🥩 {items[1]['Category']}",
+                                col_conf_title: items[1]["Confidence"],
+                                col_cov_title: items[1]["Coverage"]
+                            },
+                            {
+                                col_cat_title: f"🥦 {items[2]['Category']}",
+                                col_conf_title: items[2]["Confidence"],
+                                col_cov_title: items[2]["Coverage"]
+                            }
+                        ])
+                        st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Macronutrient coverage breakdown is hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：食材營養面積分項佔比與置信度表格已關閉。"))
+                else:
+                    # M1 Ops Core 停用狀態提示
+                    st.warning("⚠️ " + ("M1 Ops Core module disabled: Real-time visual food waste audit & database logging are suspended." if is_en else "M1 營運監控 (Ops Core) 模組已停用：實時餐盤視覺殘食審計與資料庫日誌寫入已暫停。請在左側側邊欄勾選「M1: 營運監控」以啟動 Swin-Tiny 殘食推論。"))
+                    st.image(image, caption=("Raw Tray Image (AI Inference Suspended via M1 Toggle)" if is_en else "原始餐盤影像 (M1 模組已停用，未執行 AI 殘食偵測)"), use_container_width=True)
             else:
                 st.info("👉 " + ("Please upload a plate photo on the left. The system will auto-audit upon ingest." if is_en else "請於左側上傳或拍攝餐盤照片，系統將自動啟動視覺審計與智能決策。"))
 
@@ -899,33 +944,7 @@ def render_mode2(engine, modules, is_en=False):
     df_b = get_live_branches()
     df_d = get_live_dishes()
 
-    # ==========================================================================
-    # 2 大維度過濾功能 (2-Dimension Filter Matrix)
-    # ==========================================================================
-    with st.container(border=True):
-        st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣 (2-Dimension Filter Matrix)'}")
-        
-        # 維度二：時間維度
-        period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 按月分析 (Monthly)", "📈 按年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
-        period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度 (Dimension 2: Time Period)", period_opts, horizontal=True, index=4)
-
-        # 維度一：實體與菜單維度
-        c1, c2 = st.columns(2)
-        with c1:
-            all_b_text = "🌐 All Branches" if is_en else "🌐 全部分店"
-            branch_options = [all_b_text] + (df_b["name"].tolist() if not df_b.empty else [])
-            b_filter = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度 (Dimension 1A: Branch Filter)", branch_options)
-            sel_b = "ALL" if ("All" in b_filter or "全部" in b_filter) else b_filter
-        with c2:
-            all_d_text = "🍱 All Menu Items" if is_en else "🍱 全部餐點品項"
-            known_dishes = df_d["name"].tolist() if not df_d.empty else []
-            history_dishes = df_raw["dish_name"].dropna().unique().tolist() if "dish_name" in df_raw.columns else []
-            all_available_dishes = list(dict.fromkeys(known_dishes + history_dishes))
-            dish_options = [all_d_text] + all_available_dishes
-            d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度 (Dimension 1B: Dish Filter)", dish_options)
-            sel_d = "ALL" if ("All" in d_filter or "全部" in d_filter) else d_filter
-
-    # 執行數據過濾與日期安全解析
+    # 執行數據基本格式整理與日期安全解析
     df_filtered = df_raw.copy()
     if "parsed_dt" not in df_filtered.columns or df_filtered["parsed_dt"].isna().all():
         if "timestamp" in df_filtered.columns:
@@ -933,92 +952,130 @@ def render_mode2(engine, modules, is_en=False):
         elif "audit_date" in df_filtered.columns:
             df_filtered["parsed_dt"] = pd.to_datetime(df_filtered["audit_date"], errors="coerce")
         else:
-            df_filtered["parsed_dt"] = pd.Timestamp.now()
+            df_filtered["parsed_dt"] = pd.to_datetime(datetime.date.today())
 
-    if "audit_date" not in df_filtered.columns or df_filtered["audit_date"].isna().all():
-        df_filtered["audit_date"] = df_filtered["parsed_dt"].dt.strftime("%Y-%m-%d")
-    if "audit_month" not in df_filtered.columns or df_filtered["audit_month"].isna().all():
-        df_filtered["audit_month"] = df_filtered["parsed_dt"].dt.strftime("%Y-%m")
-    if "audit_year" not in df_filtered.columns or df_filtered["audit_year"].isna().all():
-        df_filtered["audit_year"] = df_filtered["parsed_dt"].dt.strftime("%Y")
+    df_filtered["parsed_dt"] = df_filtered["parsed_dt"].fillna(pd.to_datetime(datetime.date.today()))
+    df_filtered["audit_date"] = df_filtered["parsed_dt"].dt.strftime("%Y-%m-%d")
+    df_filtered["audit_month"] = df_filtered["parsed_dt"].dt.strftime("%Y-%m")
+    df_filtered["audit_year"] = df_filtered["parsed_dt"].dt.strftime("%Y")
 
-    # 應用門市維度過濾
-    if sel_b != "ALL":
-        df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
-    
-    # 應用菜單維度過濾
-    if sel_d != "ALL":
-        df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
+    sel_b = "ALL"
+    sel_d = "ALL"
 
-    # 應用時間維度過濾
-    now = datetime.datetime.now()
-    if "本日" in period_filter or "Today" in period_filter:
-        today_str = now.strftime("%Y-%m-%d")
-        df_filtered = df_filtered[df_filtered["audit_date"] == today_str]
-    elif "本周" in period_filter or "This Week" in period_filter:
-        one_week_ago = now - datetime.timedelta(days=7)
-        df_filtered = df_filtered[df_filtered["parsed_dt"] >= one_week_ago]
-    elif "按月" in period_filter or "Monthly" in period_filter:
-        available_months = sorted(df_filtered["audit_month"].dropna().unique().tolist(), reverse=True)
-        if available_months:
-            chosen_month = st.selectbox("Select Target Audit Month" if is_en else "選擇目標審計月份", available_months)
-            df_filtered = df_filtered[df_filtered["audit_month"] == chosen_month]
-    elif "按年" in period_filter or "Yearly" in period_filter:
-        available_years = sorted(df_filtered["audit_year"].dropna().unique().tolist(), reverse=True)
-        if available_years:
-            chosen_year = st.selectbox("Select Target Audit Year" if is_en else "選擇目標審計年份", available_years)
-            df_filtered = df_filtered[df_filtered["audit_year"] == chosen_year]
+    # ==========================================================================
+    # 🌟 M2: 深度分析 (BI Analytics) 控制：雙維度過濾功能 (2-Dimension Filter Matrix)
+    # ==========================================================================
+    if modules.get("mod2", True):
+        with st.container(border=True):
+            st.markdown(f"#### 🎛️ {'2-Dimension Big Data Filter Matrix' if is_en else '雙維度大數據篩選矩陣 (2-Dimension Filter Matrix)'}")
+            
+            # 維度二：時間維度 (按日 / 按周 / 按月 / 按年 / 全部歷史)
+            period_opts = ["⚡ Today", "📅 This Week", "🗓️ Monthly", "📈 Yearly", "🌐 All Time"] if is_en else ["⚡ 本日 (Today)", "📅 本周 (This Week)", "🗓️ 按月分析 (Monthly)", "📈 按年分析 (Yearly)", "🌐 全部歷史 (All Time)"]
+            period_filter = st.radio("Time Dimension (Period)" if is_en else "時間維度 (Dimension 2: Time Period)", period_opts, horizontal=True, index=4)
 
-    if df_filtered.empty:
-        st.warning("⚠️ No matching audit records found for current filter criteria." if is_en else "⚠️ 所選維度組合目前無對應的審計數據，請放寬篩選條件。")
-        return
+            # 維度一：實體與菜單維度 (按門市分店 / 按餐點品項)
+            c1, c2 = st.columns(2)
+            with c1:
+                all_b_text = "🌐 All Branches" if is_en else "🌐 全部分店"
+                branch_options = [all_b_text] + (df_b["name"].tolist() if not df_b.empty else [])
+                b_filter = st.selectbox("Store Dimension (Branch Filter)" if is_en else "門市維度 (Dimension 1A: Branch Filter)", branch_options)
+                sel_b = "ALL" if ("All" in b_filter or "全部" in b_filter) else b_filter
+            with c2:
+                all_d_text = "🍱 All Menu Items" if is_en else "🍱 全部餐點品項"
+                dish_options = [all_d_text] + (df_d["name"].tolist() if not df_d.empty else [])
+                d_filter = st.selectbox("Menu Dimension (Dish Filter)" if is_en else "餐點維度 (Dimension 1B: Dish Filter)", dish_options)
+                sel_d = "ALL" if ("All" in d_filter or "全部" in d_filter) else d_filter
+
+        # 依時間維度過濾
+        now = datetime.datetime.now()
+        if "Today" in period_filter or "本日" in period_filter:
+            today_str = now.strftime("%Y-%m-%d")
+            df_filtered = df_filtered[df_filtered["audit_date"] == today_str]
+        elif "Week" in period_filter or "本周" in period_filter:
+            seven_days_ago = now - datetime.timedelta(days=7)
+            df_filtered = df_filtered[df_filtered["parsed_dt"] >= seven_days_ago]
+        elif "Month" in period_filter or "按月" in period_filter:
+            this_month_str = now.strftime("%Y-%m")
+            df_filtered = df_filtered[df_filtered["audit_month"] == this_month_str]
+        elif "Year" in period_filter or "按年" in period_filter:
+            this_year_str = str(now.year)
+            df_filtered = df_filtered[df_filtered["audit_year"] == this_year_str]
+
+        # 依門市與餐點過濾
+        if sel_b != "ALL":
+            df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
+        if sel_d != "ALL":
+            df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
+    else:
+        st.info("ℹ️ " + ("M2 BI Analytics module disabled: 2-Dimension Filter Matrix is hidden (displaying all-time consolidated records)." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：雙維度篩選矩陣已隱藏 (目前顯示全線歷史匯總數據)。"))
 
     n = len(df_filtered)
-    avg_w = float(df_filtered["waste_ratio"].mean()) if "waste_ratio" in df_filtered.columns else 0.0
-    cost_col = "cost_waste_hkd" if "cost_waste_hkd" in df_filtered.columns else "cost_loss_hkd"
+    if n == 0:
+        st.warning("📭 No audit records found for the selected criteria. Try switching time period to 'All Time'." if is_en else "📭 目前選定的門市、餐點或時間區間尚無審計數據。建議切換時間維度至「全部歷史 (All Time)」。")
+        return
+
+    # 核心統計值
+    avg_w = float(df_filtered["waste_ratio"].mean())
+    cost_col = "cost_waste_hkd" if "cost_waste_hkd" in df_filtered.columns else "estimated_cost_hkd"
     tot_hkd = float(df_filtered[cost_col].sum()) if cost_col in df_filtered.columns else 0.0
     co2_col = "co2_emission_kg" if "co2_emission_kg" in df_filtered.columns else "carbon_kg"
     tot_co2 = float(df_filtered[co2_col].sum()) if co2_col in df_filtered.columns else 0.0
 
-    # 4 大核心 KPI 指標卡片
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Total Trays Audited" if is_en else "審計樣本盤數", f"{n:,} " + ("Trays" if is_en else "盤"))
-    with m2:
-        st.metric("Average Waste Ratio" if is_en else "平均殘食率", f"{avg_w:.1f}%")
-    with m3:
-        st.metric("Total Food Cost Loss" if is_en else "食材損耗總額", f"HK$ {tot_hkd:,.1f}")
-    with m4:
-        st.metric("Scope 3 CO2 Emissions" if is_en else "累計 Scope 3 碳排放", f"{tot_co2:,.2f} kg")
+    # ==========================================================================
+    # 🌟 M1: 營運監控 (Ops Core) 控制：4 大核心 KPI 指標卡片
+    # ==========================================================================
+    if modules.get("mod1", True):
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("Total Trays Audited" if is_en else "審計樣本盤數", f"{n:,} " + ("Trays" if is_en else "盤"))
+        with m2:
+            st.metric("Average Waste Ratio" if is_en else "平均殘食率", f"{avg_w:.1f}%")
+        with m3:
+            st.metric("Total Food Cost Loss" if is_en else "食材損耗總額", f"HK$ {tot_hkd:,.1f}")
+        with m4:
+            st.metric("Scope 3 CO2 Emissions" if is_en else "累計 Scope 3 碳排放", f"{tot_co2:,.2f} kg")
+    else:
+        st.info("ℹ️ " + ("M1 Ops Core module disabled: 4 Core Operational KPI Metric Cards are hidden." if is_en else "M1 營運監控 (Ops Core) 模組已停用：4 大核心營運指標卡片 (審計盤數、平均殘食率、食材損耗總額、Scope 3 碳排) 已隱藏。"))
 
-    # 圖表視覺化
-    c1, c2 = st.columns(2)
-    with c1:
-        with st.container(border=True):
-            st.markdown(f"#### 🍲 {'Top Wasted Dishes Ranking' if is_en else '菜式平均殘食率排行 (Top Wasted Dishes)'}")
-            dish_summary = df_filtered.groupby("dish_name")["waste_ratio"].mean().reset_index()
-            dish_summary = dish_summary.sort_values(by="waste_ratio", ascending=False)
-            chart_dish = alt.Chart(dish_summary).mark_bar(color="#DC2626").encode(
-                x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
-                y=alt.Y("dish_name:N", sort="-x", title="Dish Item" if is_en else "餐點名稱"),
-                tooltip=["dish_name", "waste_ratio"]
-            ).properties(height=280)
-            st.altair_chart(chart_dish, use_container_width=True)
+    # ==========================================================================
+    # 🌟 M2: 深度分析 (BI Analytics) 控制：圖表視覺化 (菜式排行、門市分佈)
+    # ==========================================================================
+    dish_summary = df_filtered.groupby("dish_name")["waste_ratio"].mean().reset_index()
+    dish_summary = dish_summary.sort_values(by="waste_ratio", ascending=False)
+    
+    if modules.get("mod2", True):
+        c1, c2 = st.columns(2)
+        with c1:
+            with st.container(border=True):
+                st.markdown(f"#### 🍲 {'Top Wasted Dishes Ranking' if is_en else '菜式平均殘食率排行 (Top Wasted Dishes)'}")
+                chart_dish = alt.Chart(dish_summary).mark_bar(color="#DC2626").encode(
+                    x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
+                    y=alt.Y("dish_name:N", sort="-x", title="Dish Item" if is_en else "餐點名稱"),
+                    tooltip=["dish_name", "waste_ratio"]
+                ).properties(height=280)
+                st.altair_chart(chart_dish, use_container_width=True)
 
-    with c2:
-        with st.container(border=True):
-            st.markdown(f"#### 🏪 {'Branch Benchmarks' if is_en else '門市殘食率分佈 (Branch Benchmarks)'}")
-            branch_summary = df_filtered.groupby("branch_name")["waste_ratio"].mean().reset_index()
-            chart_branch = alt.Chart(branch_summary).mark_bar(color="#D97706").encode(
-                x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
-                y=alt.Y("branch_name:N", sort="-x", title="Branch" if is_en else "分店"),
-                tooltip=["branch_name", "waste_ratio"]
-            ).properties(height=280)
-            st.altair_chart(chart_branch, use_container_width=True)
+        with c2:
+            with st.container(border=True):
+                st.markdown(f"#### 🏪 {'Branch Benchmarks' if is_en else '門市殘食率分佈 (Branch Benchmarks)'}")
+                branch_summary = df_filtered.groupby("branch_name")["waste_ratio"].mean().reset_index()
+                chart_branch = alt.Chart(branch_summary).mark_bar(color="#D97706").encode(
+                    x=alt.X("waste_ratio:Q", title="Avg Waste Ratio (%)" if is_en else "平均殘食率 (%)"),
+                    y=alt.Y("branch_name:N", sort="-x", title="Branch" if is_en else "分店"),
+                    tooltip=["branch_name", "waste_ratio"]
+                ).properties(height=280)
+                st.altair_chart(chart_branch, use_container_width=True)
+    else:
+        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Visual charts (Top Wasted Dishes & Branch Benchmarks) are hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：Altair 視覺化圖表 (菜式殘食率排行與門市分佈) 已隱藏。"))
 
-    # Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (自動產生，無須按按鈕)
+    # ==========================================================================
+    # 🌟 Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (受 M1, M3, M4 聯動控制)
+    # ==========================================================================
     st.markdown("---")
     st.markdown(f"### 🤖 {'Pipeline 2: Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else 'Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (Store-Level NLP Engine)'}")
+
+    if not modules.get("mod1", True):
+        st.warning("⚠️ " + ("M1 Ops Core module is offline: Real-time operational telemetry is disconnected. Pipeline 2 is executing in offline advisory mode." if is_en else "⚠️ M1 營運監控模組已停用：實時營運監控處於離線狀態，Pipeline 2 目前以離線諮詢模式生成建議。"))
 
     target_store_name = ("All Café de Coral Branches (Overall Analysis)" if is_en else "大家樂全線門市 (整體綜合分析)") if sel_b == "ALL" else sel_b
     top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯 (Baked Pork Chop Rice)"
@@ -1030,6 +1087,7 @@ def render_mode2(engine, modules, is_en=False):
         st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
         st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
+        # 🌟 自動執行 Pipeline 2，無須按按鈕
         with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
             raw_prompt = (
                 f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
@@ -1041,13 +1099,23 @@ def render_mode2(engine, modules, is_en=False):
             except Exception:
                 raw_output = "[Kitchen SOP] Recalibrate portioning standard. [Club 100 Reward] Promote Less Rice option."
 
+        # 動態生成受 M3 (Smart POS) 與 M4 (Loyalty Loop) 控制的 Section II 內容
         if is_en:
+            if modules.get("mod3", True) and modules.get("mod4", True):
+                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+            elif modules.get("mod3", True) and not modules.get("mod4", True):
+                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. <i>[M4 Loyalty Loop Offline: Customer incentive dispatch paused]</i></p>"
+            elif not modules.get("mod3", True) and modules.get("mod4", True):
+                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/><i>[M3 Smart POS Offline: Kiosk prompt synchronization paused]</i> Customers completing zero waste via standard check-out are awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+            else:
+                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/><i>[M3 Smart POS & M4 Loyalty Loop Offline: Frontline kiosk prompts and customer reward voucher dispatch are currently suspended]</i></p>"
+
             card_html = (
                 '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
                 '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h4>'
                 '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
                 f'<p><b>I. BOH Kitchen Production & Portioning SOP:</b><br/>High residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}, primarily consisting of <b>{primary_waste_comp}</b>. Kitchen head is directed to immediately recalibrate standard rice scoop from 280g to 230g (-50g) and audit sauce baking consistency.</p>'
-                f'<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice -$2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>$3 Cash Voucher + 50 Green Points</b>.</p>'
+                f'{sec2_text}'
                 '<p><b>III. Financial Feasibility & Scope 3 ESG Forecast:</b><br/>This intervention reduces kitchen over-portioning by 12%, saving approximately <b>HK$ 5,200/month</b> per branch in food costs and cutting annual food waste Scope 3 emissions by <b>3.8 tonnes CO2e</b>.</p>'
                 '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
                 f'<i>AI Model: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token Output: {raw_output}</i>'
@@ -1057,12 +1125,21 @@ def render_mode2(engine, modules, is_en=False):
             )
             st.markdown(card_html, unsafe_allow_html=True)
         else:
+            if modules.get("mod3", True) and modules.get("mod4", True):
+                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與大家樂 Club 100 App，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；針對光盤完成顧客即時發放【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+            elif modules.get("mod3", True) and not modules.get("mod4", True):
+                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；<i>【M4 會員閉環模組停用：Club 100 現金券與綠色積分派發已暫停】</i>。</p>"
+            elif not modules.get("mod3", True) and modules.get("mod4", True):
+                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/><i>【M3 精準營銷模組停用：點餐機逆向推薦提示已暫停同步】</i> 門市維持標準出餐；針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+            else:
+                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/><i>【M3 精準營銷與 M4 會員閉環模組皆已停用：點餐機少飯優惠提示與 Club 100 會員惜食代金券派發皆處於暫停狀態】</i>。</p>"
+
             card_html = (
                 '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
                 '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 【大家樂總部運營通報】門市廚房與前廳改進 SOP 決策</h4>'
                 '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
                 f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率高達 <b>{top_wasted_ratio:.1f}%</b>，主要浪費集中於 <b>{primary_waste_comp}</b>。要求該店廚房主管即刻執行份量校準，將打飯量由標準 280g 微調至 230g（-50g），並加強焗烤出餐醬汁稠度均勻度。</p>'
-                f'<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與大家樂 Club 100 App，針對【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 $2 現金</b>」推薦選項；針對光盤完成顧客即時發放【<b>$3 堂食現金券 + 50 綠色積分</b>】。</p>'
+                f'{sec2_text}'
                 '<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>預估此調整可降低該分店每月廚房備料過剩 12%，預計每月節省食材成本約 <b>HK$ 5,200</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>3.8 噸</b>，符合香港最新固體廢物收費與 HKEX ESG 披露準則。</p>'
                 '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
                 f'<i>AI 模型基礎：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調) · 原始模型輸出: {raw_output}</i>'
@@ -1072,32 +1149,49 @@ def render_mode2(engine, modules, is_en=False):
             )
             st.markdown(card_html, unsafe_allow_html=True)
 
-    # 即時審計數據表明細
-    with st.container(border=True):
-        st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
-        st.dataframe(df_filtered, use_container_width=True)
+    # 🌟 M2: 深度分析 (BI Analytics) 控制：即時審計數據表明細
+    if modules.get("mod2", True):
+        with st.container(border=True):
+            st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
+            st.dataframe(df_filtered, use_container_width=True)
+    else:
+        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Live audit records table is hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：即時審計明細數據表已隱藏。"))
 
-def render_mode3(is_en=False):
+def render_mode3(modules=None, is_en=False):
     st.markdown(f"### ⚙️ {'Mode 3: Dynamic Menu, Branch & Reward Configuration' if is_en else 'Mode 3: 菜單、分店與獎勵規則動態管理 (Dynamic Configuration)'}")
     
-    t1_title = "🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)"
-    t2_title = "🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)"
-    t3_title = "🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)"
+    if modules:
+        m3_stat = "🟢 ACTIVE" if modules.get("mod3", True) else "⚪ OFFLINE"
+        m1_stat = "🟢 ACTIVE" if modules.get("mod1", True) else "⚪ OFFLINE"
+        m4_stat = "🟢 ACTIVE" if modules.get("mod4", True) else "⚪ OFFLINE"
+        t1_title = f"🍛 {'Menu Management' if is_en else '菜單管理'} [{m3_stat}]"
+        t2_title = f"🏪 {'Branch Management' if is_en else '門市管理'} [{m1_stat}]"
+        t3_title = f"🎁 {'Reward Rules' if is_en else '獎勵規則'} [{m4_stat}]"
+    else:
+        t1_title = "🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)"
+        t2_title = "🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)"
+        t3_title = "🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)"
     
     tab1, tab2, tab3 = st.tabs([t1_title, t2_title, t3_title])
     
     with tab1:
         with st.container(border=True):
+            if modules and not modules.get("mod3", True):
+                st.warning("⚠️ " + ("M3 Smart POS module is offline. Menu synchronization with frontline kiosks is paused." if is_en else "M3 精準營銷模組目前停用，菜單與前線點餐機聯動同步暫停。"))
             df_dishes = get_live_dishes()
             st.dataframe(df_dishes, use_container_width=True)
         
     with tab2:
         with st.container(border=True):
+            if modules and not modules.get("mod1", True):
+                st.warning("⚠️ " + ("M1 Ops Core module is offline. Branch portion baseline and level telemetry are paused." if is_en else "M1 營運監控模組目前停用，門市份量基準線與評級遙測已暫停。"))
             df_branches = get_live_branches()
             st.dataframe(df_branches, use_container_width=True)
         
     with tab3:
         with st.container(border=True):
+            if modules and not modules.get("mod4", True):
+                st.warning("⚠️ " + ("M4 Loyalty Loop module is offline. Club 100 reward voucher issuance rule engine is paused." if is_en else "M4 會員閉環模組目前停用，Club 100 獎勵券發放規則引擎已暫停。"))
             df_rewards = get_live_rewards()
             st.dataframe(df_rewards, use_container_width=True)
 
@@ -1116,6 +1210,7 @@ def main():
     else:
         st.sidebar.markdown("## 🍽️ Café de Coral")
 
+    # 🌟 雙語切換器 (Language Switcher)
     lang_choice = st.sidebar.radio("🌐 語言 / Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], horizontal=True)
     is_en = "English" in lang_choice
 
@@ -1148,14 +1243,14 @@ def main():
         "mod4": mod_4
     }
 
-    render_header(is_en=is_en)
+    render_header(active_modules, is_en=is_en)
 
     if mode.startswith("Mode 1"): 
         render_mode1(engine, active_modules, is_en=is_en)
     elif mode.startswith("Mode 2"): 
         render_mode2(engine, active_modules, is_en=is_en)
     else: 
-        render_mode3(is_en=is_en)
+        render_mode3(active_modules, is_en=is_en)
 
 if __name__ == "__main__":
     main()

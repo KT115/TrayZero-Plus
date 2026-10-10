@@ -88,7 +88,7 @@ def inject_safe_css():
             align-items: center !important;
             margin-left: auto !important;
             margin-right: auto !important;
-            margin-bottom: 16px !important;
+            margin-bottom: 10px !important;
             width: 100% !important;
             text-align: center !important;
         }
@@ -99,6 +99,14 @@ def inject_safe_css():
             max-width: 175px !important;
             height: auto !important;
             object-fit: contain !important;
+        }
+
+        /* 側邊欄卡片標題優化 */
+        [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] {
+            margin-bottom: 15px !important;
+            border-radius: 12px !important;
+            background-color: #F8FAFC !important;
+            border: 1px solid #E2E8F0 !important;
         }
 
         /* 標題橫幅 (大家樂經典紅琥珀漸層) */
@@ -1155,46 +1163,58 @@ def main():
     inject_safe_css()
     init_db()
 
-    if os.path.exists(LOGO_FILE_PNG):
-        st.sidebar.image(LOGO_FILE_PNG, use_container_width=True)
-    elif os.path.exists(LOGO_FILE_JPG):
-        st.sidebar.image(LOGO_FILE_JPG, use_container_width=True)
-    else:
-        st.sidebar.markdown("## 🍽️ Café de Coral")
+    # --- 側邊欄 UI 大改版 (Card-based Layout) ---
+    with st.sidebar:
+        # [區塊 1] 品牌與標題
+        if os.path.exists(LOGO_FILE_PNG):
+            st.image(LOGO_FILE_PNG, use_container_width=True)
+        elif os.path.exists(LOGO_FILE_JPG):
+            st.image(LOGO_FILE_JPG, use_container_width=True)
+        else:
+            st.markdown("<h2 style='text-align: center;'>🍽️ Café de Coral</h2>", unsafe_allow_html=True)
 
-    lang_choice = st.sidebar.radio("🌐 語言 / Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], horizontal=True)
-    is_en = "English" in lang_choice
+        st.markdown(
+            """
+            <div style="text-align: center; margin-bottom: 1.5rem; margin-top: -10px;">
+                <h3 style="color: #0F172A; font-weight: 900; margin-bottom: 4px; font-size: 1.4rem;">TrayZero+ 控制台</h3>
+                <span style="color: #64748B; font-size: 0.85rem; font-weight: 600; letter-spacing: 0.5px;">大家樂集團 · 智能餐盤審計</span>
+            </div>
+            """, unsafe_allow_html=True
+        )
 
-    st.sidebar.markdown(f"### **{'TrayZero+ Console' if is_en else 'TrayZero+ 控制台'}**")
-    st.sidebar.markdown(f"**{'Café de Coral · Smart Plate Audit' if is_en else '大家樂集團 · 智能餐盤審計'}**")
-    
-    mode_container = st.sidebar.container()
+        # [區塊 2] 全局語言設定
+        with st.container(border=True):
+            st.markdown("##### ⚙️ 語言 / Language")
+            lang_choice = st.radio("Language", ["繁體中文 (Traditional Chinese)", "English (英語)"], label_visibility="collapsed")
+            is_en = "English" in lang_choice
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"##### {'ENTERPRISE MODULES' if is_en else '企業模組狀態'}")
-    
-    mod_1 = st.sidebar.checkbox("M1: Ops Core" if is_en else "M1: 營運監控", value=True)
-    mod_2 = st.sidebar.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析", value=True)
-    mod_3 = st.sidebar.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷", value=True)
-    mod_4 = st.sidebar.checkbox("M4: Loyalty Loop" if is_en else "M4: 會員閉環", value=True)
+        # 預留 Mode Container 以確保選項順序，但不立刻渲染選項內容
+        mode_container = st.container(border=True)
 
-    active_modules = {
-        "mod1": mod_1,
-        "mod2": mod_2,
-        "mod3": mod_3,
-        "mod4": mod_4
-    }
+        # [區塊 4] 模組開關 (先讀取狀態以供 Route 判斷)
+        with st.container(border=True):
+            st.markdown(f"##### 🔌 {'Enterprise Modules' if is_en else '企業模組狀態'}")
+            mod_1 = st.checkbox("M1: Ops Core" if is_en else "M1: 營運監控", value=True)
+            mod_2 = st.checkbox("M2: BI Analytics" if is_en else "M2: 深度分析", value=True)
+            mod_3 = st.checkbox("M3: Smart POS" if is_en else "M3: 精準營銷", value=True)
+            mod_4 = st.checkbox("M4: Loyalty Loop" if is_en else "M4: 會員閉環", value=True)
 
-    mode_options = [
-        "Frontline Return Kiosk" if is_en else "門市前線收盤機"
-    ]
-    if mod_2:
-        mode_options.append("Operations HQ BI Analytics" if is_en else "總部 BI 大數據看板")
-    
-    mode_options.append("Dynamic Master Configuration" if is_en else "菜單與獎勵配置")
+        active_modules = {
+            "mod1": mod_1,
+            "mod2": mod_2,
+            "mod3": mod_3,
+            "mod4": mod_4
+        }
 
-    mode_container.markdown("---")
-    mode = mode_container.radio("System Operation Mode" if is_en else "系統運行模式", mode_options)
+        # [區塊 3] 系統運行模式導航 (依據模組狀態渲染)
+        mode_options = ["Frontline Return Kiosk" if is_en else "門市前線收盤機"]
+        if mod_2:
+            mode_options.append("Operations HQ BI Analytics" if is_en else "總部 BI 大數據看板")
+        mode_options.append("Dynamic Master Configuration" if is_en else "菜單與獎勵配置")
+
+        with mode_container:
+            st.markdown(f"##### 🧭 {'System Mode' if is_en else '系統運行模式'}")
+            mode = st.radio("System Operation Mode", mode_options, label_visibility="collapsed")
 
     with st.spinner("🚀 Loading Chained AI Pipelines..." if is_en else "🚀 正在啟動雙管線深度學習引擎 (Loading AI Engine)..."):
         engine = load_ai_engine()

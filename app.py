@@ -966,7 +966,7 @@ def render_mode2(engine, modules, is_en=False):
                 st.altair_chart(chart_branch, use_container_width=True)
 
     # ==========================================================================
-    # 🌟 Pipeline 2: 動態門市級別 SOP 決策引擎 (依據餐點類型與殘食率產生)
+    # 🌟 Pipeline 2: 動態門市級別 SOP 決策引擎 (依據餐點類型與殘食率動態產生，並加入 Cache 機制)
     # ==========================================================================
     if modules.get("mod1", True):
         st.markdown("---")
@@ -982,16 +982,26 @@ def render_mode2(engine, modules, is_en=False):
             st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
             st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
-            with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
-                raw_prompt = (
-                    f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
-                    f"Dish: {top_wasted_dish}, Waste: {top_wasted_ratio:.1f}%, "
-                    f"Repeated Occurrences: {n} in branch {target_store_name}. Action:"
-                )
-                try:
-                    raw_output = engine["nlp"](raw_prompt, max_length=128)[0]["generated_text"]
-                except Exception:
-                    raw_output = "[Kitchen SOP] Recalibrated based on dynamic waste ratios."
+            # 🌟 導入 Prompt Hash Cache 解決 Pipeline 2 執行 20 秒造成的卡頓
+            prompt_hash = f"{target_store_name}_{top_wasted_dish}_{top_wasted_ratio}_{n}"
+            if "nlp_cache" not in st.session_state:
+                st.session_state["nlp_cache"] = {}
+
+            if prompt_hash in st.session_state["nlp_cache"]:
+                raw_output = st.session_state["nlp_cache"][prompt_hash]
+            else:
+                with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
+                    raw_prompt = (
+                        f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
+                        f"Dish: {top_wasted_dish}, Waste: {top_wasted_ratio:.1f}%, "
+                        f"Repeated Occurrences: {n} in branch {target_store_name}."
+                    )
+                    try:
+                        # 使用 max_new_tokens 取代 max_length 大幅加快推論速度
+                        raw_output = engine["nlp"](raw_prompt, max_new_tokens=45)[0]["generated_text"]
+                    except Exception:
+                        raw_output = "[Kitchen SOP] Recalibrated based on dynamic waste ratios."
+                    st.session_state["nlp_cache"][prompt_hash] = raw_output
 
             # 解析當前高損耗餐點包含的成分，實現精準建議
             if "豬" in top_wasted_dish or "Pork" in top_wasted_dish:
@@ -1010,7 +1020,7 @@ def render_mode2(engine, modules, is_en=False):
                 carb_name, prot_name, veg_name = "主食澱粉", "蛋白質肉類", "蔬菜配菜"
                 carb_en, prot_en, veg_en = "Carbs", "Protein", "Vegetables"
 
-            # 🌟 動態 SOP 產生邏輯 (Dynamic Logic based on waste ratio)
+            # 🌟 動態 SOP 產生邏輯 (Section 1 & 3)
             if top_wasted_ratio <= 15.0:
                 sop_zh = (f"監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率極低（僅 <b>{top_wasted_ratio:.1f}%</b>）。<br>"
                           f"• <b>🍚 {carb_name}</b>、<b>🥩 {prot_name}</b> 與 <b>🥦 {veg_name}</b> 消耗率極佳，現有食譜比例完美。要求該店廚房主管繼續嚴格執行當前標準 SOP，無需進行份量扣減。")
@@ -1041,13 +1051,19 @@ def render_mode2(engine, modules, is_en=False):
                 esg_zh = f"預估此強制介入可大幅降低該分店廚房備料過剩達 18%，預計每月節省食材成本約 <b>HK$ 6,500</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>4.2 噸</b>，快速止損並符合最新固體廢物收費準則。"
                 esg_en = "This strict intervention reduces kitchen over-portioning by 18%, saving approximately <b>HK$ 6,500/month</b> in food costs and cutting annual Scope 3 emissions by <b>4.2 tonnes CO2e</b>, quickly stopping financial leaks."
 
+            # 🌟 動態 Kiosk 與會員策略 (Section 2 - 解決商業利潤邏輯問題)
             if is_en:
                 if modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+                    if top_wasted_ratio <= 15.0:
+                        sec2_text = f"<p><b>II. Frontline Kiosk & Member Strategy:</b><br/>[MAINTAIN STATUS QUO] Due to extremely low waste, Kiosks will maintain standard portion sizes. <b>No proactive \"Less Rice\" discount will be pushed</b> to protect average transaction value (ATV). Customers achieving zero waste will still receive <b>50 Green Points</b> post-meal as a routine ESG incentive.</p>"
+                    elif top_wasted_ratio <= 35.0:
+                        sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Kiosks and Club 100 App have dynamically enabled a soft <b>\"Less Rice - HK$ 1 Discount\"</b> prompt for {top_wasted_dish}. Customers completing zero waste are awarded a <b>HK$ 2 Cash Voucher + 20 Green Points</b>.</p>"
+                    else:
+                        sec2_text = f"<p><b>II. Aggressive Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>[URGENT] Kiosks have overridden the default portion to \"Less Rice\" for {top_wasted_dish} with a bold <b>\"Go Green: HK$ 2 Cash Discount\"</b> to aggressively cut food waste. Customers completing zero waste are awarded the highest tier <b>HK$ 3 Cash Voucher + 50 Green Points</b> to offset margin loss.</p>"
                 elif modules.get("mod3", True) and not modules.get("mod4", True):
-                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}.</p>"
+                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks at this store have automatically adjusted the default prompt for {top_wasted_dish} based on waste metrics.</p>"
                 elif not modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Customers completing zero waste via standard check-out are awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Customers completing zero waste via standard check-out are awarded baseline <b>Green Points</b>.</p>"
                 else:
                     sec2_text = ""
 
@@ -1067,11 +1083,16 @@ def render_mode2(engine, modules, is_en=False):
                 st.markdown(card_html, unsafe_allow_html=True)
             else:
                 if modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與大家樂 Club 100 App，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；針對光盤完成顧客即時發放【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                    if top_wasted_ratio <= 15.0:
+                        sec2_text = f"<p><b>二、 前廳自助點餐機與會員策略 (Kiosk & Member Strategy)：</b><br/>【保持現狀】因該餐點殘食率極低，點餐機維持標準出餐設定，<b>不主動推送「少飯扣減」優惠</b>以保障客單價與利潤。顧客用餐完畢若達成光盤，仍可獲發【<b>50 綠色積分</b>】作為常規環保鼓勵。</p>"
+                    elif top_wasted_ratio <= 35.0:
+                        sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與 Club 100 App，針對【{top_wasted_dish}】於點餐介面加入「<b>少飯/少麵扣減 HK$ 1 現金</b>」輕度推薦選項；針對光盤完成顧客即時發放【<b>HK$ 2 堂食現金券 + 20 綠色積分</b>】。</p>"
+                    else:
+                        sec2_text = f"<p><b>二、 前廳自助點餐機激進減量策略 (Aggressive Kiosk Reverse-POS)：</b><br/>系統已將【{top_wasted_dish}】於點餐機的預設份量改為「少飯/少麵」，並以紅字醒目提示「<b>響應環保，少飯即減 HK$ 2</b>」以強制止損；針對成功光盤顧客發放最高級別【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
                 elif modules.get("mod3", True) and not modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{top_wasted_dish}】於點餐介面調整少飯現金扣減策略。</p>"
                 elif not modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發常規綠色積分。</p>"
                 else:
                     sec2_text = ""
 

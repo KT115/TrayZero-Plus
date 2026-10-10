@@ -714,38 +714,11 @@ def render_header(modules=None, is_en=False):
     title_text = "🍽️ TrayZero+ | Café de Coral Smart Plate Waste Audit & Loyalty System" if is_en else "🍽️ TrayZero+ | 大家樂智能餐盤廚餘審計與會員閉環系統"
     sub_text = "Café de Coral AI ESG & Smart Operations Engine · Chained Deep Learning Pipeline" if is_en else "Café de Coral AI ESG & Smart Operations Engine · 雙管線深度學習驅動"
     
-    badges_html = ""
-    if modules:
-        mod_defs = [
-            ("M1", "M1: Ops Core" if is_en else "M1: 營運監控", modules.get("mod1", True)),
-            ("M2", "M2: BI Analytics" if is_en else "M2: 深度分析", modules.get("mod2", True)),
-            ("M3", "M3: Smart POS" if is_en else "M3: 精準營銷", modules.get("mod3", True)),
-            ("M4", "M4: Loyalty Loop" if is_en else "M4: 會員閉環", modules.get("mod4", True)),
-        ]
-        badges_list = []
-        for code, label, is_active in mod_defs:
-            if is_active:
-                bg = "rgba(16, 185, 129, 0.25)"
-                border = "#10B981"
-                text_c = "#FFFFFF"
-                status_icon = "🟢 ACTIVE" if is_en else "🟢 運行中"
-            else:
-                bg = "rgba(148, 163, 184, 0.2)"
-                border = "#94A3B8"
-                text_c = "#CBD5E1"
-                status_icon = "⚪ OFFLINE" if is_en else "⚪ 已停用"
-            badges_list.append(
-                f'<span style="background: {bg}; border: 1px solid {border}; color: {text_c}; border-radius: 6px; padding: 4px 10px; font-size: 0.78rem; font-weight: 800; display: inline-flex; align-items: center; gap: 4px;">'
-                f'<b>{label}</b> [{status_icon}]</span>'
-            )
-        badges_html = f'<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">{" ".join(badges_list)}</div>'
-
     header_html = (
         '<div class="pos-header-banner">'
         '<div style="width: 100%;">'
         f'<h2 class="pos-header-title">{title_text}</h2>'
         f'<div style="color: #FEF3C7; font-size: 0.88rem; font-weight: 700; margin-top: 4px;">{sub_text}</div>'
-        f'{badges_html}'
         '</div>'
         '</div>'
     )
@@ -777,7 +750,6 @@ def render_mode1(engine, modules, is_en=False):
                 )
             else:
                 member_id = "ANON"
-                st.info("ℹ️ " + ("M4 Loyalty Loop module disabled: Operating in anonymous guest mode." if is_en else "M4 會員閉環模組已停用：切換為訪客匿名收盤模式 (Guest Mode)。"))
 
         # Step 2: 餐盤影像獲取 (基礎硬件攝像通道)
         with st.container(border=True):
@@ -807,27 +779,26 @@ def render_mode1(engine, modules, is_en=False):
                 st.info("💡 " + ("Please upload or capture a plate photo. The system will auto-audit upon ingest." if is_en else "請上傳餐盤照片，系統將自動啟動視覺審計與數據記錄。"))
 
         # Step 3: 菜式辨識與確認 (受 M3: Smart POS 控制)
-        with st.container(border=True):
-            st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
-            if modules.get("mod3", True):
+        if modules.get("mod3", True):
+            with st.container(border=True):
+                st.markdown(f"#### {'3. Dish Recognition & Confirmation' if is_en else '3. 菜式辨識與確認'}")
                 if image:
                     auto_dish, dish_conf = auto_detect_dish_clip(image, dish_names, engine)
                     st.info(f"{'🔍 CLIP AI Recommended Dish' if is_en else '🔍 CLIP 智慧推薦菜式'}：**{auto_dish}** ({'Confidence' if is_en else '置信度'}: {dish_conf:.1%})")
                     sel_dish = st.selectbox("Confirm Target Dish" if is_en else "確認當前餐點菜式", dish_names, index=dish_names.index(auto_dish) if auto_dish in dish_names else 0)
                 else:
                     sel_dish = st.selectbox("Select Target Dish" if is_en else "選擇餐點菜式", dish_names, index=0)
-            else:
-                st.info("ℹ️ " + ("M3 Smart POS module disabled: CLIP AI recommendation offline, defaulting to manual menu selection." if is_en else "M3 精準營銷 (Smart POS) 模組已停用：CLIP AI 智慧菜式推薦已關閉，切換為前線標準手動選單模式。"))
-                sel_dish = st.selectbox("Select Target Dish" if is_en else "手動選擇餐點菜式", dish_names, index=0)
+        else:
+             sel_dish = "一哥焗豬扒飯 (Baked Pork Chop Rice)" # Default fallback if mod3 is off and hidden
 
     with col_k2:
         # Step 4: 深度學習審計與即時回饋 (受 M1: Ops Core, M2: BI Analytics, M4: Loyalty Loop 控制)
-        with st.container(border=True):
-            st.markdown(f"#### {'4. Deep Learning Audit & Instant Feedback' if is_en else '4. 深度學習審計與即時回饋'}")
+        if modules.get("mod1", True):
+            with st.container(border=True):
+                st.markdown(f"#### {'4. Deep Learning Audit & Instant Feedback' if is_en else '4. 深度學習審計與即時回饋'}")
 
-            if image is not None:
-                # 🌟 M1: 營運監控 (Ops Core) 開關控制
-                if modules.get("mod1", True):
+                if image is not None:
+                    # 🌟 M1: 營運監控 (Ops Core) 開關控制
                     with st.spinner("🤖 Executing Pipeline 1 (Swin-Tiny) Vision Audit..." if is_en else "🤖 正在執行 Pipeline 1 (Swin-Tiny) 視覺審計..."):
                         annotated_img, items, ratio, primary_cat, is_food = detect_tray(image, engine, selected_dish=sel_dish, is_en=is_en)
                         
@@ -884,8 +855,6 @@ def render_mode1(engine, modules, is_en=False):
                             '</div>'
                         )
                         st.markdown(voucher_card_html, unsafe_allow_html=True)
-                    else:
-                        st.info("ℹ️ " + ("M4 Loyalty Loop module disabled: Club 100 customer reward vouchers are paused." if is_en else "M4 會員閉環 (Loyalty Loop) 模組已停用：Club 100 惜食獎勵禮券與積分發放已暫停。"))
 
                     # 🌟 M2: 深度分析 (BI Analytics) 開關控制 - 各大食材分項佔比
                     if modules.get("mod2", True):
@@ -924,14 +893,8 @@ def render_mode1(engine, modules, is_en=False):
                             }
                         ])
                         st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
-                    else:
-                        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Macronutrient coverage breakdown is hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：食材營養面積分項佔比與置信度表格已關閉。"))
                 else:
-                    # M1 Ops Core 停用狀態提示
-                    st.warning("⚠️ " + ("M1 Ops Core module disabled: Real-time visual food waste audit & database logging are suspended." if is_en else "M1 營運監控 (Ops Core) 模組已停用：實時餐盤視覺殘食審計與資料庫日誌寫入已暫停。請在左側側邊欄勾選「M1: 營運監控」以啟動 Swin-Tiny 殘食推論。"))
-                    st.image(image, caption=("Raw Tray Image (AI Inference Suspended via M1 Toggle)" if is_en else "原始餐盤影像 (M1 模組已停用，未執行 AI 殘食偵測)"), use_container_width=True)
-            else:
-                st.info("👉 " + ("Please upload a plate photo on the left. The system will auto-audit upon ingest." if is_en else "請於左側上傳或拍攝餐盤照片，系統將自動啟動視覺審計與智能決策。"))
+                    st.info("👉 " + ("Please upload a plate photo on the left. The system will auto-audit upon ingest." if is_en else "請於左側上傳或拍攝餐盤照片，系統將自動啟動視覺審計與智能決策。"))
 
 def render_mode2(engine, modules, is_en=False):
     st.markdown(f"### 📊 {'Mode 2: Operations HQ & ESG BI Analytics Dashboard' if is_en else 'Mode 2: 總部營運與 ESG 大數據儀表板 (Operations HQ BI)'}")
@@ -1006,8 +969,6 @@ def render_mode2(engine, modules, is_en=False):
             df_filtered = df_filtered[df_filtered["branch_name"] == sel_b]
         if sel_d != "ALL":
             df_filtered = df_filtered[df_filtered["dish_name"] == sel_d]
-    else:
-        st.info("ℹ️ " + ("M2 BI Analytics module disabled: 2-Dimension Filter Matrix is hidden (displaying all-time consolidated records)." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：雙維度篩選矩陣已隱藏 (目前顯示全線歷史匯總數據)。"))
 
     n = len(df_filtered)
     if n == 0:
@@ -1034,8 +995,6 @@ def render_mode2(engine, modules, is_en=False):
             st.metric("Total Food Cost Loss" if is_en else "食材損耗總額", f"HK$ {tot_hkd:,.1f}")
         with m4:
             st.metric("Scope 3 CO2 Emissions" if is_en else "累計 Scope 3 碳排放", f"{tot_co2:,.2f} kg")
-    else:
-        st.info("ℹ️ " + ("M1 Ops Core module disabled: 4 Core Operational KPI Metric Cards are hidden." if is_en else "M1 營運監控 (Ops Core) 模組已停用：4 大核心營運指標卡片 (審計盤數、平均殘食率、食材損耗總額、Scope 3 碳排) 已隱藏。"))
 
     # ==========================================================================
     # 🌟 M2: 深度分析 (BI Analytics) 控制：圖表視覺化 (菜式排行、門市分佈)
@@ -1065,135 +1024,118 @@ def render_mode2(engine, modules, is_en=False):
                     tooltip=["branch_name", "waste_ratio"]
                 ).properties(height=280)
                 st.altair_chart(chart_branch, use_container_width=True)
-    else:
-        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Visual charts (Top Wasted Dishes & Branch Benchmarks) are hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：Altair 視覺化圖表 (菜式殘食率排行與門市分佈) 已隱藏。"))
 
     # ==========================================================================
     # 🌟 Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (受 M1, M3, M4 聯動控制)
     # ==========================================================================
-    st.markdown("---")
-    st.markdown(f"### 🤖 {'Pipeline 2: Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else 'Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (Store-Level NLP Engine)'}")
+    if modules.get("mod1", True):
+        st.markdown("---")
+        st.markdown(f"### 🤖 {'Pipeline 2: Store-Level Smart Operations & Kitchen Prep SOP Decision Engine' if is_en else 'Pipeline 2: 門市級別智能營運與廚房備料 SOP 決策引擎 (Store-Level NLP Engine)'}")
 
-    if not modules.get("mod1", True):
-        st.warning("⚠️ " + ("M1 Ops Core module is offline: Real-time operational telemetry is disconnected. Pipeline 2 is executing in offline advisory mode." if is_en else "⚠️ M1 營運監控模組已停用：實時營運監控處於離線狀態，Pipeline 2 目前以離線諮詢模式生成建議。"))
+        target_store_name = ("All Café de Coral Branches (Overall Analysis)" if is_en else "大家樂全線門市 (整體綜合分析)") if sel_b == "ALL" else sel_b
+        top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯 (Baked Pork Chop Rice)"
+        top_wasted_ratio = dish_summary.iloc[0]["waste_ratio"] if not dish_summary.empty else avg_w
+        primary_waste_comp = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns else ("Carbohydrates" if is_en else "主食白飯 (Carb)")
 
-    target_store_name = ("All Café de Coral Branches (Overall Analysis)" if is_en else "大家樂全線門市 (整體綜合分析)") if sel_b == "ALL" else sel_b
-    top_wasted_dish = dish_summary.iloc[0]["dish_name"] if not dish_summary.empty else "一哥焗豬扒飯 (Baked Pork Chop Rice)"
-    top_wasted_ratio = dish_summary.iloc[0]["waste_ratio"] if not dish_summary.empty else avg_w
-    primary_waste_comp = df_filtered["primary_waste"].value_counts().index[0] if "primary_waste" in df_filtered.columns else ("Carbohydrates" if is_en else "主食白飯 (Carb)")
+        with st.container(border=True):
+            st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Sample Size' if is_en else '樣本規模'}：**{n:,} {'Trays' if is_en else '盤'}**")
+            st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
+            st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
 
-    with st.container(border=True):
-        st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Sample Size' if is_en else '樣本規模'}：**{n:,} {'Trays' if is_en else '盤'}**")
-        st.markdown(f"• {'Store Avg Waste' if is_en else '門市平均殘食率'}：**{avg_w:.1f}%** ｜ {'Top Wasted Dish' if is_en else '最高損耗餐點'}：**{top_wasted_dish}** ({'Ratio' if is_en else '殘食率'}: **{top_wasted_ratio:.1f}%**)")
-        st.markdown(f"• {'Primary Waste Component' if is_en else '主要浪費食材分項'}：**{primary_waste_comp}**")
+            # 🌟 自動執行 Pipeline 2，無須按按鈕
+            with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
+                raw_prompt = (
+                    f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
+                    f"Dish: {top_wasted_dish}, Waste: {top_wasted_ratio:.1f}%, "
+                    f"Repeated Occurrences: {n} in branch {target_store_name}. Action:"
+                )
+                try:
+                    raw_output = engine["nlp"](raw_prompt, max_length=128)[0]["generated_text"]
+                except Exception:
+                    raw_output = "[Kitchen SOP] Recalibrate portioning standard. [Club 100 Reward] Promote Less Rice option."
 
-        # 🌟 自動執行 Pipeline 2，無須按按鈕
-        with st.spinner("🤖 Generating Store-Level SOP Directive via Pipeline 2 (Flan-T5)..." if is_en else "🤖 正在調用 Pipeline 2 (Flan-T5) 進行門市級別大數據智能決策..."):
-            raw_prompt = (
-                f"Generate kitchen SOP alert and customer incentive for Café de Coral: "
-                f"Dish: {top_wasted_dish}, Waste: {top_wasted_ratio:.1f}%, "
-                f"Repeated Occurrences: {n} in branch {target_store_name}. Action:"
-            )
-            try:
-                raw_output = engine["nlp"](raw_prompt, max_length=128)[0]["generated_text"]
-            except Exception:
-                raw_output = "[Kitchen SOP] Recalibrate portioning standard. [Club 100 Reward] Promote Less Rice option."
+            # 動態生成受 M3 (Smart POS) 與 M4 (Loyalty Loop) 控制的 Section II 內容
+            if is_en:
+                if modules.get("mod3", True) and modules.get("mod4", True):
+                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+                elif modules.get("mod3", True) and not modules.get("mod4", True):
+                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}.</p>"
+                elif not modules.get("mod3", True) and modules.get("mod4", True):
+                    sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Customers completing zero waste via standard check-out are awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+                else:
+                    sec2_text = ""
 
-        # 動態生成受 M3 (Smart POS) 與 M4 (Loyalty Loop) 控制的 Section II 內容
-        if is_en:
-            if modules.get("mod3", True) and modules.get("mod4", True):
-                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks and Club 100 App at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. Customers completing zero waste are instantly awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
-            elif modules.get("mod3", True) and not modules.get("mod4", True):
-                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/>Ordering kiosks at this store have automatically enabled the <b>Less Rice - HK$ 2 Cash Discount</b> default prompt for {top_wasted_dish}. <i>[M4 Loyalty Loop Offline: Customer incentive dispatch paused]</i></p>"
-            elif not modules.get("mod3", True) and modules.get("mod4", True):
-                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/><i>[M3 Smart POS Offline: Kiosk prompt synchronization paused]</i> Customers completing zero waste via standard check-out are awarded <b>HK$ 3 Cash Voucher + 50 Green Points</b>.</p>"
+                card_html = (
+                    '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
+                    '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h4>'
+                    '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
+                    f'<p><b>I. BOH Kitchen Production & Portioning SOP:</b><br/>High residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}, primarily consisting of <b>{primary_waste_comp}</b>. Kitchen head is directed to immediately recalibrate standard rice scoop from 280g to 230g (-50g) and audit sauce baking consistency.</p>'
+                    f'{sec2_text}'
+                    '<p><b>III. Financial Feasibility & Scope 3 ESG Forecast:</b><br/>This intervention reduces kitchen over-portioning by 12%, saving approximately <b>HK$ 5,200/month</b> per branch in food costs and cutting annual food waste Scope 3 emissions by <b>3.8 tonnes CO2e</b>.</p>'
+                    '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
+                    f'<i>AI Model: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token Output: {raw_output}</i>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
             else:
-                sec2_text = f"<p><b>II. Frontline Kiosk Reverse-POS & Member Incentive Strategy:</b><br/><i>[M3 Smart POS & M4 Loyalty Loop Offline: Frontline kiosk prompts and customer reward voucher dispatch are currently suspended]</i></p>"
+                if modules.get("mod3", True) and modules.get("mod4", True):
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與大家樂 Club 100 App，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；針對光盤完成顧客即時發放【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                elif modules.get("mod3", True) and not modules.get("mod4", True):
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項。</p>"
+                elif not modules.get("mod3", True) and modules.get("mod4", True):
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                else:
+                    sec2_text = ""
 
-            card_html = (
-                '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
-                '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h4>'
-                '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
-                f'<p><b>I. BOH Kitchen Production & Portioning SOP:</b><br/>High residual waste ({top_wasted_ratio:.1f}%) detected on <b>{top_wasted_dish}</b> in {target_store_name}, primarily consisting of <b>{primary_waste_comp}</b>. Kitchen head is directed to immediately recalibrate standard rice scoop from 280g to 230g (-50g) and audit sauce baking consistency.</p>'
-                f'{sec2_text}'
-                '<p><b>III. Financial Feasibility & Scope 3 ESG Forecast:</b><br/>This intervention reduces kitchen over-portioning by 12%, saving approximately <b>HK$ 5,200/month</b> per branch in food costs and cutting annual food waste Scope 3 emissions by <b>3.8 tonnes CO2e</b>.</p>'
-                '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
-                f'<i>AI Model: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token Output: {raw_output}</i>'
-                '</div>'
-                '</div>'
-                '</div>'
-            )
-            st.markdown(card_html, unsafe_allow_html=True)
-        else:
-            if modules.get("mod3", True) and modules.get("mod4", True):
-                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機與大家樂 Club 100 App，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；針對光盤完成顧客即時發放【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
-            elif modules.get("mod3", True) and not modules.get("mod4", True):
-                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項；<i>【M4 會員閉環模組停用：Club 100 現金券與綠色積分派發已暫停】</i>。</p>"
-            elif not modules.get("mod3", True) and modules.get("mod4", True):
-                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/><i>【M3 精準營銷模組停用：點餐機逆向推薦提示已暫停同步】</i> 門市維持標準出餐；針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
-            else:
-                sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/><i>【M3 精準營銷與 M4 會員閉環模組皆已停用：點餐機少飯優惠提示與 Club 100 會員惜食代金券派發皆處於暫停狀態】</i>。</p>"
-
-            card_html = (
-                '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
-                '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 【大家樂總部運營通報】門市廚房與前廳改進 SOP 決策</h4>'
-                '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
-                f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率高達 <b>{top_wasted_ratio:.1f}%</b>，主要浪費集中於 <b>{primary_waste_comp}</b>。要求該店廚房主管即刻執行份量校準，將打飯量由標準 280g 微調至 230g（-50g），並加強焗烤出餐醬汁稠度均勻度。</p>'
-                f'{sec2_text}'
-                '<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>預估此調整可降低該分店每月廚房備料過剩 12%，預計每月節省食材成本約 <b>HK$ 5,200</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>3.8 噸</b>，符合香港最新固體廢物收費與 HKEX ESG 披露準則。</p>'
-                '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
-                f'<i>AI 模型基礎：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調) · 原始模型輸出: {raw_output}</i>'
-                '</div>'
-                '</div>'
-                '</div>'
-            )
-            st.markdown(card_html, unsafe_allow_html=True)
+                card_html = (
+                    '<div style="background: #FFFFFF; border: 2px solid #2563EB; border-radius: 12px; padding: 18px 22px; margin-top: 12px; color: #0F172A;">'
+                    '<h4 style="color: #1E40AF; margin-top: 0; font-weight: 800;">📋 【大家樂總部運營通報】門市廚房與前廳改進 SOP 決策</h4>'
+                    '<div style="font-size: 0.95rem; line-height: 1.6; color: #1E293B;">'
+                    f'<p><b>一、 後廚生產與備料調整 SOP (BOH Preparation & Scoop Recalibration)：</b><br/>監測到【{target_store_name}】之【{top_wasted_dish}】平均殘食率高達 <b>{top_wasted_ratio:.1f}%</b>，主要浪費集中於 <b>{primary_waste_comp}</b>。要求該店廚房主管即刻執行份量校準，將打飯量由標準 280g 微調至 230g（-50g），並加強焗烤出餐醬汁稠度均勻度。</p>'
+                    f'{sec2_text}'
+                    '<p><b>三、 門市營運效益與 ESG 減碳預期 (Store Ops & ESG Impact)：</b><br/>預估此調整可降低該分店每月廚房備料過剩 12%，預計每月節省食材成本約 <b>HK$ 5,200</b>，每年累計減少 Scope 3 廚餘碳排放約 <b>3.8 噸</b>，符合香港最新固體廢物收費與 HKEX ESG 披露準則。</p>'
+                    '<div style="font-size: 0.8rem; color: #64748B; border-top: 1px solid #E2E8F0; padding-top: 8px; margin-top: 10px;">'
+                    f'<i>AI 模型基礎：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調) · 原始模型輸出: {raw_output}</i>'
+                    '</div>'
+                    '</div>'
+                    '</div>'
+                )
+                st.markdown(card_html, unsafe_allow_html=True)
 
     # 🌟 M2: 深度分析 (BI Analytics) 控制：即時審計數據表明細
     if modules.get("mod2", True):
         with st.container(border=True):
             st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
             st.dataframe(df_filtered, use_container_width=True)
-    else:
-        st.info("ℹ️ " + ("M2 BI Analytics module disabled: Live audit records table is hidden." if is_en else "M2 深度分析 (BI Analytics) 模組已停用：即時審計明細數據表已隱藏。"))
 
 def render_mode3(modules=None, is_en=False):
     st.markdown(f"### ⚙️ {'Mode 3: Dynamic Menu, Branch & Reward Configuration' if is_en else 'Mode 3: 菜單、分店與獎勵規則動態管理 (Dynamic Configuration)'}")
     
-    if modules:
-        m3_stat = "🟢 ACTIVE" if modules.get("mod3", True) else "⚪ OFFLINE"
-        m1_stat = "🟢 ACTIVE" if modules.get("mod1", True) else "⚪ OFFLINE"
-        m4_stat = "🟢 ACTIVE" if modules.get("mod4", True) else "⚪ OFFLINE"
-        t1_title = f"🍛 {'Menu Management' if is_en else '菜單管理'} [{m3_stat}]"
-        t2_title = f"🏪 {'Branch Management' if is_en else '門市管理'} [{m1_stat}]"
-        t3_title = f"🎁 {'Reward Rules' if is_en else '獎勵規則'} [{m4_stat}]"
-    else:
-        t1_title = "🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)"
-        t2_title = "🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)"
-        t3_title = "🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)"
+    t1_title = "🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)"
+    t2_title = "🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)"
+    t3_title = "🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)"
     
     tab1, tab2, tab3 = st.tabs([t1_title, t2_title, t3_title])
     
     with tab1:
-        with st.container(border=True):
-            if modules and not modules.get("mod3", True):
-                st.warning("⚠️ " + ("M3 Smart POS module is offline. Menu synchronization with frontline kiosks is paused." if is_en else "M3 精準營銷模組目前停用，菜單與前線點餐機聯動同步暫停。"))
-            df_dishes = get_live_dishes()
-            st.dataframe(df_dishes, use_container_width=True)
+        if modules and modules.get("mod3", True):
+            with st.container(border=True):
+                df_dishes = get_live_dishes()
+                st.dataframe(df_dishes, use_container_width=True)
         
     with tab2:
-        with st.container(border=True):
-            if modules and not modules.get("mod1", True):
-                st.warning("⚠️ " + ("M1 Ops Core module is offline. Branch portion baseline and level telemetry are paused." if is_en else "M1 營運監控模組目前停用，門市份量基準線與評級遙測已暫停。"))
-            df_branches = get_live_branches()
-            st.dataframe(df_branches, use_container_width=True)
+        if modules and modules.get("mod1", True):
+            with st.container(border=True):
+                df_branches = get_live_branches()
+                st.dataframe(df_branches, use_container_width=True)
         
     with tab3:
-        with st.container(border=True):
-            if modules and not modules.get("mod4", True):
-                st.warning("⚠️ " + ("M4 Loyalty Loop module is offline. Club 100 reward voucher issuance rule engine is paused." if is_en else "M4 會員閉環模組目前停用，Club 100 獎勵券發放規則引擎已暫停。"))
-            df_rewards = get_live_rewards()
-            st.dataframe(df_rewards, use_container_width=True)
+        if modules and modules.get("mod4", True):
+            with st.container(border=True):
+                df_rewards = get_live_rewards()
+                st.dataframe(df_rewards, use_container_width=True)
 
 # ==============================================================================
 # 5. Main Application Controller (主程式入口 & 雙語切換)

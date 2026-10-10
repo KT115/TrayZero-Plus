@@ -308,7 +308,7 @@ def ensure_audit_logs_schema(conn):
     """)
     conn.commit()
     
-    # 🌟 動態欄位檢查與無損熱遷移 (徹底杜絕 sqlite3.OperationalError: table audit_logs has no column named audit_date)
+    # 🌟 動態欄位檢查與無損熱遷移
     cur.execute("PRAGMA table_info(audit_logs)")
     existing_cols = {col[1] for col in cur.fetchall()}
     expected_cols = [
@@ -503,7 +503,6 @@ def evaluate_customer_rewards(waste_ratio_pct, is_en=False):
     return desc, tier, "#64748B"
 
 def save_record(r):
-    # 🌟 每次寫入前確保資料庫結構具有完整欄位 (杜絕所有版本不相容拋錯)
     ts_str = str(r.get("timestamp", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     date_str = str(r.get("audit_date", ts_str.split(" ")[0] if " " in ts_str else ts_str[:10]))
     month_str = str(r.get("audit_month", date_str[:7]))
@@ -578,9 +577,7 @@ def load_ai_engine():
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     device_id = 0 if torch.cuda.is_available() else -1
     
-    # --------------------------------------------------------------------------
-    # Pipeline 1: 視覺殘食審計 (今日新微調模型: kktlau115/trayzero-frozen-swin-model)
-    # --------------------------------------------------------------------------
+    # Pipeline 1: 視覺殘食審計
     p1_model_id = "kktlau115/trayzero-frozen-swin-model"
     try:
         processor = AutoImageProcessor.from_pretrained(p1_model_id)
@@ -592,9 +589,7 @@ def load_ai_engine():
         model = AutoModelForImageClassification.from_pretrained(fallback_p1).to(dev)
         model.eval()
 
-    # --------------------------------------------------------------------------
     # 輔助模組: Zero-shot CLIP 菜式智慧核驗
-    # --------------------------------------------------------------------------
     try:
         clip_classifier = pipeline(
             "zero-shot-image-classification", 
@@ -604,9 +599,7 @@ def load_ai_engine():
     except Exception:
         clip_classifier = None
 
-    # --------------------------------------------------------------------------
-    # Pipeline 2: 智能廚房 SOP 預警與會員激勵生成 (今日新微調模型: kktlau115/trayzero-flant5-sop-alert)
-    # --------------------------------------------------------------------------
+    # Pipeline 2: 智能廚房 SOP 預警與會員激勵生成
     p2_model_id = "kktlau115/trayzero-flant5-sop-alert"
     try:
         nlp_generator = pipeline(
@@ -634,7 +627,6 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
         if logits.shape[-1] == 5:
             probs = torch.nn.functional.softmax(logits, dim=-1)[0].cpu().numpy()
             pred_idx = int(np.argmax(probs))
-            # 5 個殘食等級之校準中位數 (連續機率加權期望值，徹底解決固定 92% 或離散階梯問題)
             class_midpoints = np.array([0.025, 0.125, 0.325, 0.600, 0.880])
             ratio = float(np.sum(probs * class_midpoints))
             model_conf = float(probs[pred_idx])
@@ -648,11 +640,8 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
             model_conf = 0.88
         ratio = max(0.0, min(1.0, ratio))
 
-    # 🌟 徹底移除 CLIP 暴力覆蓋殘食率的錯誤規則 (先前因 untouched 關鍵詞導致所有菜餚都被強制變為 92.0%)
-    # 完全回歸並信賴用戶訓練之微調 Swin Transformer 視覺模型預測結果！
     top_score = model_conf
 
-    # 6 級分級標準
     if ratio >= 0.90:
         primary_cat = "Untouched Meal (90-100%)" if is_en else "完整未動餐點 (90-100% Untouched)"
         accent_color = "#DC2626"
@@ -1076,7 +1065,7 @@ def render_mode2(engine, modules, is_en=False):
                 elif modules.get("mod3", True) and not modules.get("mod4", True):
                     sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>系統已自動聯動該門市之自助點餐機，針對【{target_store_name}】之【{top_wasted_dish}】於點餐介面自動跳轉「<b>少飯少麵扣減 HK$ 2 現金</b>」推薦選項。</p>"
                 elif not modules.get("mod3", True) and modules.get("mod4", True):
-                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主ড়ান্ত主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
+                    sec2_text = f"<p><b>二、 前廳自助點餐機逆向優惠策略 (Kiosk Reverse-POS & Member Incentive)：</b><br/>針對主動光盤顧客仍可由收盤處即時派發【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。</p>"
                 else:
                     sec2_text = ""
 
@@ -1101,32 +1090,50 @@ def render_mode2(engine, modules, is_en=False):
             st.markdown(f"#### 📋 {'Live Audit Records Table' if is_en else '即時審計明細數據表 (Live Audit Records)'}")
             st.dataframe(df_filtered, use_container_width=True)
 
+
+# ==============================================================================
+# 🌟 動態 Tab 控制函數 (Dynamic Tab Rendering)
+# ==============================================================================
 def render_mode3(modules=None, is_en=False):
     st.markdown(f"### ⚙️ {'Mode 3: Dynamic Menu, Branch & Reward Configuration' if is_en else 'Mode 3: 菜單、分店與獎勵規則動態管理 (Dynamic Configuration)'}")
     
-    t1_title = "🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)"
-    t2_title = "🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)"
-    t3_title = "🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)"
+    # 動態生成 Tab 列表
+    tab_titles = []
+    tab_keys = []
     
-    tab1, tab2, tab3 = st.tabs([t1_title, t2_title, t3_title])
+    if modules and modules.get("mod3", True):
+        tab_titles.append("🍛 Menu Management" if is_en else "🍛 菜單管理 (Dishes)")
+        tab_keys.append("menu")
+        
+    if modules and modules.get("mod1", True):
+        tab_titles.append("🏪 Branch Management" if is_en else "🏪 門市管理 (Branches)")
+        tab_keys.append("branch")
+        
+    if modules and modules.get("mod4", True):
+        tab_titles.append("🎁 Reward Rules" if is_en else "🎁 獎勵規則 (Rewards)")
+        tab_keys.append("reward")
+        
+    # 如果所有模組都被關閉，則顯示提示而不渲染 Tabs
+    if not tab_titles:
+        st.info("ℹ️ " + ("All configuration modules are currently offline." if is_en else "所有配置模組 (M1, M3, M4) 目前皆已停用，無可用設定。"))
+        return
+        
+    # 建立動態 Tabs
+    tabs = st.tabs(tab_titles)
     
-    with tab1:
-        if modules and modules.get("mod3", True):
+    # 將內容填充進對應的 Tab
+    for i, key in enumerate(tab_keys):
+        with tabs[i]:
             with st.container(border=True):
-                df_dishes = get_live_dishes()
-                st.dataframe(df_dishes, use_container_width=True)
-        
-    with tab2:
-        if modules and modules.get("mod1", True):
-            with st.container(border=True):
-                df_branches = get_live_branches()
-                st.dataframe(df_branches, use_container_width=True)
-        
-    with tab3:
-        if modules and modules.get("mod4", True):
-            with st.container(border=True):
-                df_rewards = get_live_rewards()
-                st.dataframe(df_rewards, use_container_width=True)
+                if key == "menu":
+                    df_dishes = get_live_dishes()
+                    st.dataframe(df_dishes, use_container_width=True)
+                elif key == "branch":
+                    df_branches = get_live_branches()
+                    st.dataframe(df_branches, use_container_width=True)
+                elif key == "reward":
+                    df_rewards = get_live_rewards()
+                    st.dataframe(df_rewards, use_container_width=True)
 
 # ==============================================================================
 # 5. Main Application Controller (主程式入口 & 雙語切換)

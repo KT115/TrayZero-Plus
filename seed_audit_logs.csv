@@ -1,4 +1,43 @@
-timestamp,audit_date,audit_month,branch_name,branch_level,dish_name,primary_waste,waste_ratio,cost_waste_hkd,co2_emission_kg
-2026-09-23 12:30:15,2026-09-23,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食殘留 Carb Residual,28.5,12.8,1.54
-2026-09-23 12:45:20,2026-09-23,2026-09,中環威靈頓街店,Level A,一哥焗豬扒飯 (Baked Pork Chop Rice),主食殘留 Carb Residual,34.0,15.3,1.84
-2026-09-23 13:10:05,2026-09-23,2026-09,香港科技大學店 (HKUST),Level C,咖喱牛腩飯 (Curry Beef Brisket Rice),肉類殘留 Meat Residual,18.2,8.2,0.98
+timestamp,audit_date,audit_month,branch_name,branch_level,dish_name,primary_waste,waste_ratio,waste_weight_g,cost_waste_hkd,co2_emission_kg,member_id
+2026-10-10 15:53:53,2026-10-10,2026-10,香港科技大學店 (HKUST),Level C,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),26.3,73.6,3.31,0.206,M882190
+2026-10-08 11:36:48,2026-10-08,2026-10,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),22.7,63.6,2.86,0.178,M339102
+2026-10-06 15:37:18,2026-10-06,2026-10,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),38.9,105.0,4.72,0.294,STAFF
+2026-10-03 14:39:03,2026-10-03,2026-10,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),27.2,76.2,3.43,0.213,M772019
+2026-10-02 15:00:57,2026-10-02,2026-10,沙田新城市廣場店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),9.4,26.3,1.18,0.074,M882190
+2026-09-28 13:05:17,2026-09-28,2026-09,香港科技大學店 (HKUST),Level C,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),9.2,24.8,1.12,0.069,STAFF
+2026-09-26 16:42:59,2026-09-26,2026-09,中環威靈頓街店,Level A,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),21.5,60.2,2.71,0.169,ANON
+2026-09-24 20:16:59,2026-09-24,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),24.9,67.2,3.02,0.188,M339102
+2026-09-22 20:46:15,2026-09-22,2026-09,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),23.4,63.2,2.84,0.177,M339102
+2026-09-22 14:31:06,2026-09-22,2026-09,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),19.8,55.4,2.49,0.155,M772019
+2026-09-20 19:45:00,2026-09-20,2026-09,香港科技大學店 (HKUST),Level C,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),34.8,94.0,4.23,0.263,M772019
+2026-09-16 18:44:52,2026-09-16,2026-09,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),20.9,56.4,2.54,0.158,M110293
+2026-09-16 17:36:27,2026-09-16,2026-09,沙田新城市廣場店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),9.3,26.0,1.17,0.073,M339102
+2026-09-16 14:58:20,2026-09-16,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),32.5,87.8,3.95,0.246,M882190
+2026-09-16 14:09:02,2026-09-16,2026-09,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),27.5,74.2,3.34,0.208,M551829
+2026-09-13 20:19:27,2026-09-13,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),13.0,35.1,1.58,0.098,M992817
+2026-09-13 15:05:34,2026-09-13,2026-09,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),26.4,73.9,3.33,0.207,ANON
+2026-09-12 11:24:06,2026-09-12,2026-09,中環威靈頓街店,Level A,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),33.0,92.4,4.16,0.259,M882190
+2026-09-10 18:13:22,2026-09-10,2026-09,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),15.5,43.4,1.95,0.122,ANON
+2026-09-10 15:37:02,2026-09-10,2026-09,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),36.1,97.5,4.39,0.273,M339102
+2026-09-10 12:50:49,2026-09-10,2026-09,香港科技大學店 (HKUST),Level C,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),14.1,39.5,1.78,0.111,M772019
+2026-09-09 14:29:36,2026-09-09,2026-09,香港科技大學店 (HKUST),Level C,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),21.4,57.8,2.6,0.162,M551829
+2026-09-09 11:10:20,2026-09-09,2026-09,沙田新城市廣場店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),26.6,74.5,3.35,0.209,M551829
+2026-09-08 18:09:42,2026-09-08,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),25.9,69.9,3.15,0.196,M882190
+2026-09-07 16:21:10,2026-09-07,2026-09,香港科技大學店 (HKUST),Level C,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),20.6,57.7,2.6,0.162,M882190
+2026-09-06 18:21:26,2026-09-06,2026-09,香港科技大學店 (HKUST),Level C,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),31.9,89.3,4.02,0.25,M992817
+2026-09-06 17:39:51,2026-09-06,2026-09,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),23.7,64.0,2.88,0.179,M551829
+2026-09-05 16:33:46,2026-09-05,2026-09,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),3.9,10.9,0.49,0.031,M339102
+2026-09-04 19:32:52,2026-09-04,2026-09,沙田新城市廣場店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),19.5,52.6,2.37,0.147,M882190
+2026-09-02 14:28:14,2026-09-02,2026-09,香港科技大學店 (HKUST),Level C,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),10.6,28.6,1.29,0.08,M882190
+2026-08-31 11:48:19,2026-08-31,2026-08,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),22.7,63.6,2.86,0.178,M339102
+2026-08-30 16:20:05,2026-08-30,2026-08,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),7.8,21.1,0.95,0.059,M339102
+2026-08-27 18:35:24,2026-08-27,2026-08,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),15.1,40.8,1.84,0.114,M110293
+2026-08-24 13:19:23,2026-08-24,2026-08,沙田新城市廣場店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),42.3,118.4,5.33,0.332,M772019
+2026-08-22 20:50:18,2026-08-22,2026-08,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),36.5,98.5,4.43,0.276,M339102
+2026-08-22 13:59:32,2026-08-22,2026-08,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),33.2,89.6,4.03,0.251,M339102
+2026-08-15 11:47:46,2026-08-15,2026-08,香港科技大學店 (HKUST),Level C,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),42.9,115.8,5.21,0.324,M882190
+2026-08-14 17:25:36,2026-08-14,2026-08,沙田新城市廣場店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),19.2,51.8,2.33,0.145,M882190
+2026-08-14 13:57:31,2026-08-14,2026-08,中環威靈頓街店,Level A,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),36.7,99.1,4.46,0.277,STAFF
+2026-08-13 13:48:35,2026-08-13,2026-08,將軍澳 Popcorn 店,Level B,焗肉醬意粉 (Baked Spaghetti Bolognese),主食意粉 (Carb),28.9,78.0,3.51,0.218,ANON
+2026-08-12 13:43:54,2026-08-12,2026-08,將軍澳 Popcorn 店,Level B,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),29.5,82.6,3.72,0.231,M882190
+2026-08-12 12:27:27,2026-08-12,2026-08,中環威靈頓街店,Level A,一哥焗豬扒飯 (Baked Pork Chop Rice),主食白飯 (Carb),24.1,67.5,3.04,0.189,M882190

@@ -43,6 +43,22 @@ LOGO_FILE_JPG = os.path.join(BASE_DIR, "CDC_810.jpg")
 
 os.makedirs(DISH_IMG_DIR, exist_ok=True)
 
+
+def render_html_block(html_str):
+    """Safely render HTML without triggering Markdown indented code blocks"""
+    if not html_str: return
+    # Remove HTML comments
+    cleaned = re.sub(r'<!--.*?-->', '', str(html_str), flags=re.DOTALL)
+    # Strip all leading/trailing whitespace from every line
+    clean_lines = "\n".join(line.strip() for line in cleaned.splitlines() if line.strip())
+    if hasattr(st, "html"):
+        try:
+            st.html(clean_lines)
+            return
+        except Exception:
+            pass
+    st.markdown(clean_lines, unsafe_allow_html=True)
+
 def inject_safe_css():
     st.markdown("""
     <style>
@@ -1143,7 +1159,7 @@ def render_header(modules=None, is_en=False):
         '</div>'
         '</div>'
     )
-    st.markdown(header_html, unsafe_allow_html=True)
+    render_html_block(header_html)
 
 def render_mode1(engine, modules, is_en=False):
     st.markdown(f"### 📷 {'Frontline Smart Tray Return Kiosk' if is_en else '門市前線智能收盤點餐機'}")
@@ -1307,7 +1323,7 @@ AI 視覺系統識別當前圖片為**人物自拍、人臉肖像或非餐飲物
                                 f'<div style="font-size: 0.82rem; margin-top: 5px; color: #78350F; font-weight: 600;">{credited_msg}</div>'
                                 '</div>'
                             )
-                            st.markdown(voucher_card_html, unsafe_allow_html=True)
+                            render_html_block(card_html)
 
                         if modules.get("mod2", True):
                             st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比'}")
@@ -1824,7 +1840,7 @@ def render_mode2(engine, modules, is_en=False):
                     </div>
                 </div>
                 '''
-            st.markdown(textwrap.dedent(card_html).strip(), unsafe_allow_html=True)
+            render_html_block(card_html)
 
     if modules.get("mod2", True):
         with st.container(border=True):

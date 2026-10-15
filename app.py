@@ -1,3 +1,4 @@
+import re
 import time
 import os
 import datetime
@@ -13,6 +14,8 @@ from transformers import (
     AutoImageProcessor,
     AutoModelForImageClassification,
     pipeline
+)
+import altair as alt
 )
 import altair as alt
 

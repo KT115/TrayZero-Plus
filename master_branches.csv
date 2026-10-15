@@ -1,5 +1,5 @@
-name,level,district,traffic,avg_covers,base_rice_g,strategy
-中環威靈頓街店,Level A (商業核心區 / CBD),中西區,白領上班族為主，午市尖峰翻檯率極高,1200,240,白領控醣需求高，建議推動小份量出餐與少飯扣減優惠。
-沙田新城市廣場店,Level B (住宅商場 / Residential),沙田區,家庭客、長者與週末休閒客群,1500,260,家庭用餐與兒童共享比例高，建議推動彈性配菜組合。
-香港科技大學店 (HKUST),Level C (校園與青年區 / Campus),西貢區,學生、教職員，運動量及食量顯著較大,1800,280,維持大份量以維持飽足感，重點監控肉類醬汁口味與炸物品質。
-將軍澳 Popcorn 店,Level B (住宅商場 / Residential),西貢區,家庭客及換乘鐵路客流,1400,260,重點監控主食及焗烤類餐點份量。
+branch_id,name_zh,name_en,level_zh,level_en,district_zh,district_en,traffic_zh,traffic_en,avg_covers,base_rice_g,strategy_zh,strategy_en
+B01,中環威靈頓街店,Wellington Street Branch,Level A (商業核心區),Level A (CBD Core),中西區,Central & Western,白領上班族為主，午市尖峰翻檯率極高,Mainly corporate white-collars; high lunch turnover rate,1200,240,白領控醣需求高，建議推動小份量出餐與少飯扣減優惠。,High low-carb demand; promote smaller servings and Less Rice discounts.
+B02,沙田新城市廣場店,New Town Plaza Branch,Level B (住宅商場),Level B (Residential Mall),沙田區,Sha Tin,家庭客、長者與週末休閒客群,Families, seniors, and weekend leisure diners,1500,260,家庭用餐與兒童共享比例高，建議推動彈性配菜組合。,High family sharing ratio; promote flexible side dish combos.
+B03,香港科技大學店,HKUST Campus Branch,Level C (校園青年區),Level C (University Campus),西貢區,Sai Kung,學生、教職員，運動量及食量顯著較大,Students and faculty with active appetite,1800,280,維持大份量以維持飽足感，重點監控肉類醬汁口味與炸物品質。,Maintain large portions; monitor protein tenderness and gravy quality.
+B04,將軍澳 Popcorn 店,PopCorn Mall Branch,Level B (住宅商場),Level B (Residential Mall),西貢區,Sai Kung,家庭客及換乘鐵路客流,Families and transit commuters,1400,260,重點監控主食及焗烤類餐點份量。,Focus on portion control for rice and baked pasta entrees.

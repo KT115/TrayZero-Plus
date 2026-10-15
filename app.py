@@ -371,17 +371,27 @@ def t(text, to_en=False):
     en = clean_en(s)
     
     if to_en:
+        if "全線門市" in s or "All Café" in s: return "All Café de Coral Branches"
+        if "全部" in s or "全線" in s or "Overall" in s or "All Core" in s or "All Dishes" in s or "All Menu" in s:
+            return "All Core Menu Dishes"
         if zh in DISH_ZH_TO_EN: return DISH_ZH_TO_EN[zh]
         if zh in BRANCH_ZH_TO_EN: return BRANCH_ZH_TO_EN[zh]
         if zh in COMPONENT_ZH_TO_EN: return COMPONENT_ZH_TO_EN[zh]
-        if "全線門市" in s or "All" in s: return "All Café de Coral Branches"
+        if "主食" in s or "Carb" in s: return "Carbohydrates"
+        if "肉" in s or "Prot" in s: return "Protein"
+        if "菜" in s or "Veg" in s or "湯" in s or "Sauce" in s: return "Vegetables & Sauce"
         if en: return en
         return zh
     else:
+        if "All Café" in s or "全線門市" in s: return "大家樂全線門市"
+        if "All Core" in s or "All Dishes" in s or "All Menu" in s or "全部" in s or "全線" in s:
+            return "全部餐點品項 (全線核心菜式)"
         if en in DISH_EN_TO_ZH: return DISH_EN_TO_ZH[en]
         if en in BRANCH_EN_TO_ZH: return BRANCH_EN_TO_ZH[en]
         if en in COMPONENT_EN_TO_ZH: return COMPONENT_EN_TO_ZH[en]
-        if "All" in s or "全線門市" in s: return "大家樂全線門市"
+        if "Carb" in s or "主食" in s: return "主食澱粉"
+        if "Prot" in s or "肉" in s: return "蛋白質肉類"
+        if "Veg" in s or "Sauce" in s or "菜" in s: return "蔬菜配菜與醬汁"
         if zh: return zh
         return s
 
@@ -1366,8 +1376,14 @@ AI 視覺系統識別當前圖片為**人物自拍、人臉肖像或非餐飲物
 def render_single_pipeline2_bento(
     target_store_name, curr_dish_zh, curr_waste, curr_count, curr_comp_raw, curr_cost, engine, is_en=False, is_overall=False
 ):
-    curr_dish_en = t(curr_dish_zh, to_en=True)
-    target_dish_name = curr_dish_en if is_en else curr_dish_zh
+    if is_overall:
+        curr_dish_zh = "全部餐點品項 (全線核心菜式)"
+        curr_dish_en = "All Core Menu Dishes"
+        target_dish_name = "All Core Menu Dishes" if is_en else "全部餐點品項 (全線核心菜式)"
+    else:
+        curr_dish_en = t(curr_dish_zh, to_en=True)
+        target_dish_name = curr_dish_en if is_en else curr_dish_zh
+
     comp_display = t(curr_comp_raw, to_en=is_en)
     tray_unit = "Trays" if is_en else "盤"
 
@@ -1378,8 +1394,9 @@ def render_single_pipeline2_bento(
             st.markdown(f"• {'Aggregated Waste Ratio' if is_en else '大數據聚合殘食率'}：**{curr_waste:.1f}%** ｜ {'Grouped Sample Trays' if is_en else '菜式樣本總盤數'}：**{curr_count:,} {tray_unit}**")
             st.markdown(f"• {'Primary Waste Component' if is_en else '主要損耗食材分類'}：**{comp_display}** ｜ {'Total Food Cost Loss' if is_en else '累計食材損耗金額'}：**HK$ {curr_cost:,.1f}**")
         with c_target_kpi:
+            bracket_label = f"[{target_dish_name}]" if is_en else f"【{target_dish_name}】"
             st.metric(
-                label=f"【{target_dish_name}】" + (" Avg Waste Ratio" if is_en else " 平均殘食率"),
+                label=f"{bracket_label} " + ("Avg Waste Ratio" if is_en else "平均殘食率"),
                 value=f"{curr_waste:.1f}%",
                 delta=f"{curr_count:,} " + tray_unit,
                 delta_color="inverse"

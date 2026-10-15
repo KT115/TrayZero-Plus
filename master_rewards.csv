@@ -1,0 +1,4 @@
+reward_id,tier_name_zh,tier_name_en,max_waste_ratio,reward_type,reward_description_zh,reward_description_en,is_active
+R01,極致光盤獎,Ultra Clean Plate,10.0,Coupon + Points,【$3 堂食現金券】+【50 綠色積分】+【凍檸茶半價券】,【$3 Cash Voucher】+【50 Green Points】+【Half-Price Iced Lemon Tea】,1
+R02,達標惜食獎,Standard Clean Plate,20.0,Coupon,【$2 堂食電子券】+【20 綠色積分】,【$2 Dining Voucher】+【20 Green Points】,1
+R03,支持環保獎,Green Support,100.0,Points,【10 綠色環保積分】,【10 Green Points】,1

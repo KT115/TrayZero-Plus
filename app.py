@@ -1512,20 +1512,12 @@ def render_mode2(engine, modules, is_en=False):
             st.info("ℹ️ " + ("No audit records available for analysis." if is_en else "無相應餐點數據可供分析。"))
             return
 
-        st.markdown(f"##### 🍲 {'Grouped Dish Analysis Matrix' if is_en else '按菜式分類聚合分析矩陣'} ({len(dish_agg)} {'Core Dishes' if is_en else '款主力菜式'})")
+        # Pipeline 2 自動繼承頂部篩選器（若頂部選定特定菜式則精確診斷該菜式；若選全部菜式則自動聚焦殘食率最高之優先干預菜式）
+        if sel_d != "ALL" and sel_d in dish_agg["canonical_dish"].values:
+            curr_row = dish_agg[dish_agg["canonical_dish"] == sel_d].iloc[0]
+        else:
+            curr_row = dish_agg.iloc[0]
 
-        dish_list_zh = dish_agg["canonical_dish"].tolist()
-        c_sel_dish, c_dish_kpi = st.columns([2, 1])
-        with c_sel_dish:
-            selected_agg_dish = st.selectbox(
-                "Select Grouped Core Dish for Pipeline 2 Analysis" if is_en else "選擇欲讓 Pipeline 2 進行大數據深度診斷的聚合菜式：",
-                dish_list_zh,
-                index=0,
-                format_func=lambda x: t(x, to_en=is_en),
-                key="pipeline2_dish_select_" + ("en" if is_en else "zh")
-            )
-
-        curr_row = dish_agg[dish_agg["canonical_dish"] == selected_agg_dish].iloc[0]
         curr_dish_zh = curr_row["canonical_dish"]
         curr_dish_en = t(curr_dish_zh, to_en=True)
         curr_waste = float(curr_row["waste_ratio"])
@@ -1544,18 +1536,19 @@ def render_mode2(engine, modules, is_en=False):
             comp_display = t(curr_comp_raw, to_en=False)
             tray_unit = "盤"
 
-        with c_dish_kpi:
-            st.metric(
-                label=f"【{target_dish_name}】" + (" Avg Waste Ratio" if is_en else " 平均殘食率"),
-                value=f"{curr_waste:.1f}%",
-                delta=f"{curr_count:,} " + tray_unit,
-                delta_color="inverse"
-            )
-
         with st.container(border=True):
-            st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Target Dish' if is_en else '聚合診斷餐點'}：**{target_dish_name}**")
-            st.markdown(f"• {'Aggregated Waste Ratio' if is_en else '大數據聚合殘食率'}：**{curr_waste:.1f}%** ｜ {'Grouped Sample Trays' if is_en else '菜式樣本總盤數'}：**{curr_count:,} {tray_unit}**")
-            st.markdown(f"• {'Primary Waste Component' if is_en else '主要損耗食材分類'}：**{comp_display}** ｜ {'Total Food Cost Loss' if is_en else '累計食材損耗金額'}：**HK$ {curr_cost:,.1f}**")
+            c_target_info, c_target_kpi = st.columns([2, 1])
+            with c_target_info:
+                st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Target Dish' if is_en else '聚合診斷餐點'}：**{target_dish_name}**")
+                st.markdown(f"• {'Aggregated Waste Ratio' if is_en else '大數據聚合殘食率'}：**{curr_waste:.1f}%** ｜ {'Grouped Sample Trays' if is_en else '菜式樣本總盤數'}：**{curr_count:,} {tray_unit}**")
+                st.markdown(f"• {'Primary Waste Component' if is_en else '主要損耗食材分類'}：**{comp_display}** ｜ {'Total Food Cost Loss' if is_en else '累計食材損耗金額'}：**HK$ {curr_cost:,.1f}**")
+            with c_target_kpi:
+                st.metric(
+                    label=f"【{target_dish_name}】" + (" Avg Waste Ratio" if is_en else " 平均殘食率"),
+                    value=f"{curr_waste:.1f}%",
+                    delta=f"{curr_count:,} " + tray_unit,
+                    delta_color="inverse"
+                )
 
             prompt_hash = f"{target_store_name}_{curr_dish_en}_{round(curr_waste, 1)}"
             if "nlp_cache" not in st.session_state:
@@ -1637,8 +1630,8 @@ def render_mode2(engine, modules, is_en=False):
             is_alert = "Alert" in ai_boh or (curr_waste >= 25.0 and not is_critical)
 
             if is_critical:
-                sev_badge_zh = '<span style="background:#DC2626; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">🚨 緊急損耗告警</span>'
-                sev_badge_en = '<span style="background:#DC2626; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">🚨 Critical Waste Alert</span>'
+                sev_badge_zh = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 緊急損耗告警</span>'
+                sev_badge_en = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 Critical Waste Alert</span>'
                 carb_act_zh = "強制扣減標準出餐量 20%–25%（如：標準 280g 降至 220g），杜絕過度給飯與無效澱粉損耗。"
                 carb_act_en = "Enforce a mandatory 20%–25% reduction in standard carb serving size (e.g., down to 220g) to eliminate excessive starch waste."
                 prot_act_zh = "【高成本食材警報】立即核查入貨批次解凍、醃製與烹調火候，避免因肉質過硬過柴遭棄置。"
@@ -1650,8 +1643,8 @@ def render_mode2(engine, modules, is_en=False):
                 sav_hkd = max(4500.0, curr_cost * 18.0)
                 sav_co2 = max(3.2, curr_waste * 0.065)
             elif is_alert:
-                sev_badge_zh = '<span style="background:#D97706; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">⚠️ 中度損耗優化</span>'
-                sev_badge_en = '<span style="background:#D97706; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">⚠️ Moderate Waste Alert</span>'
+                sev_badge_zh = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ 中度損耗優化</span>'
+                sev_badge_en = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ Moderate Waste Alert</span>'
                 carb_act_zh = "建議將打餐標準量微調下調 10%–15%，精準平衡顧客飽足感與食材損耗。"
                 carb_act_en = "Calibrate standard carb portion downward by 10%–15% to balance customer satiety with cost control."
                 prot_act_zh = "高成本食材殘留反映顧客可能對口感不滿。建議檢視烹調火候與嫩度，避免因肉質過柴遭棄置。"
@@ -1663,8 +1656,8 @@ def render_mode2(engine, modules, is_en=False):
                 sav_hkd = max(2100.0, curr_cost * 8.5)
                 sav_co2 = max(1.5, curr_waste * 0.038)
             else:
-                sev_badge_zh = '<span style="background:#10B981; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">✅ 常規標準維持</span>'
-                sev_badge_en = '<span style="background:#10B981; color:white; padding:3px 9px; border-radius:12px; font-size:0.8rem; font-weight:700;">✅ Optimal Waste Standard</span>'
+                sev_badge_zh = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ 常規標準維持</span>'
+                sev_badge_en = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ Optimal Waste Standard</span>'
                 carb_act_zh = "主食消耗率極佳，現有食譜份量黃金平衡，要求廚房繼續嚴格執行當前標準打餐量，無需進行份量扣減。"
                 carb_act_en = "Carbohydrate consumption is optimal. Maintain current recipe standards and portioning without reductions."
                 prot_act_zh = "肉類口感與調味獲顧客高度認可，維持現有標準解凍、醃製與烹調程序。"
@@ -1687,7 +1680,7 @@ def render_mode2(engine, modules, is_en=False):
                                 🏢 Branch: <b>{target_store_name}</b> ｜ 🍱 Dish: <b>{target_dish_name}</b> ｜ 📊 Avg Waste: <b>{curr_waste:.1f}%</b> ({curr_count:,} trays audited)
                             </div>
                         </div>
-                        <div>{sev_badge_en}</div>
+                        <div style="flex-shrink:0; margin-left:12px;">{sev_badge_en}</div>
                     </div>
 
                     <!-- Card 1: BOH Kitchen -->
@@ -1769,7 +1762,7 @@ def render_mode2(engine, modules, is_en=False):
                                 🏢 門市對象: <b>{target_store_name}</b> ｜ 🍱 聚合餐點: <b>{target_dish_name}</b> ｜ 📊 平均殘食率: <b>{curr_waste:.1f}%</b> (樣本盤數: {curr_count:,} 盤)
                             </div>
                         </div>
-                        <div>{sev_badge_zh}</div>
+                        <div style="flex-shrink:0; margin-left:12px;">{sev_badge_zh}</div>
                     </div>
 
                     <!-- Card 1: BOH Kitchen -->

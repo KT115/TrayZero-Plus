@@ -16,8 +16,6 @@ from transformers import (
     pipeline
 )
 import altair as alt
-)
-import altair as alt
 
 # ==============================================================================
 # 1. Page Configuration & Custom Styling

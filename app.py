@@ -1,3 +1,4 @@
+import textwrap
 import re
 import time
 import os
@@ -216,21 +217,30 @@ def inject_safe_css():
             background-color: #FFFFFF !important;
             border: 1.5px solid #CBD5E1 !important;
             border-radius: 10px !important;
-            padding: 12px 16px !important;
+            padding: 8px 10px !important;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05) !important;
         }
         [data-testid="stMetric"] * {
             color: #0F172A !important;
         }
+        [data-testid="stMetricLabel"] {
+            white-space: normal !important;
+            word-break: break-word !important;
+            overflow: visible !important;
+        }
         [data-testid="stMetricLabel"] * {
             color: #475569 !important;
             font-weight: 700 !important;
-            font-size: 0.88rem !important;
+            font-size: 0.80rem !important;
+            white-space: normal !important;
+            text-overflow: clip !important;
+            overflow: visible !important;
+            line-height: 1.25 !important;
         }
         [data-testid="stMetricValue"] * {
             color: #0F172A !important;
             font-weight: 800 !important;
-            font-size: 1.35rem !important;
+            font-size: 1.15rem !important;
             white-space: nowrap !important;
             overflow: visible !important;
             text-overflow: clip !important;
@@ -578,6 +588,7 @@ def init_db():
     conn.close()
 
 
+
 def ensure_branch_columns(df_in, is_en=False):
     df = df_in.copy()
     if "branch_id" not in df.columns:
@@ -604,6 +615,21 @@ def ensure_branch_columns(df_in, is_en=False):
     if "strategy_en" not in df.columns:
         df["strategy_en"] = df["strategy"].apply(clean_en) if "strategy" in df.columns else ""
 
+    strategy_defaults = {
+        "B01": ("白領控醣需求高，建議推動小份量出餐與少飯扣減優惠。", "High low-carb demand; push small portions & Less Rice discounts."),
+        "B02": ("家庭用餐與兒童共享比例高，建議推動彈性配菜組合。", "High family sharing; promote flexible side dish combos."),
+        "B03": ("維持大份量以維持飽足感，重點監控肉類醬汁口味與炸物品質。", "Preserve standard portion size for satiety; monitor meat sauce quality."),
+        "B04": ("重點監控主食及焗烤類餐點份量。", "Monitor baked rice and pasta starch portioning.")
+    }
+    for idx, row in df.iterrows():
+        bid = str(row.get("branch_id", ""))
+        if bid in strategy_defaults:
+            st_zh, st_en = strategy_defaults[bid]
+            if pd.isna(row.get("strategy_zh")) or not str(row.get("strategy_zh")).strip():
+                df.at[idx, "strategy_zh"] = st_zh
+            if pd.isna(row.get("strategy_en")) or not str(row.get("strategy_en")).strip():
+                df.at[idx, "strategy_en"] = st_en
+
     if "avg_covers" not in df.columns:
         df["avg_covers"] = 1400
     if "base_rice_g" not in df.columns:
@@ -615,6 +641,7 @@ def ensure_branch_columns(df_in, is_en=False):
     df["traffic"] = df["traffic_en"] if is_en else df["traffic_zh"]
     df["strategy"] = df["strategy_en"] if is_en else df["strategy_zh"]
     return df
+
 
 def ensure_dish_columns(df_in, is_en=False):
     df = df_in.copy()
@@ -638,6 +665,28 @@ def ensure_dish_columns(df_in, is_en=False):
     if "sauce_veg_en" not in df.columns:
         df["sauce_veg_en"] = df["sauce_veg"].apply(clean_en) if "sauce_veg" in df.columns else ""
 
+    # Comprehensive auto-fill if fields are empty
+    recipe_defaults = {
+        "D01": ("鮮茄醬汁與洋蔥", "Tomato Gravy & Onion", 480, "白米飯", "Egg Fried Rice (280g)", "焗厚切豬扒", "Baked Thick-Cut Pork Chop"),
+        "D05": ("洋蔥與香草配料", "Onion & Herb Garnish", 450, "意大利麵", "Spaghetti Pasta (260g)", "慢燉牛肉醬", "Slow-Cooked Beef Bolognese"),
+        "D03": ("伴碟青菜與薑蓉", "Veggie Garnish & Scallion Oil", 460, "白米飯", "Steamed Jasmine Rice (260g)", "燒味", "Roasted Meat (Char Siu / Chicken)"),
+        "D04": ("芽菜與韭黃", "Bean Sprouts & Chives", 430, "中式麵條", "Flat Rice Noodles (250g)", "牛肉", "Tender Beef Slices")
+    }
+    for idx, row in df.iterrows():
+        did = str(row.get("dish_id", ""))
+        if did in recipe_defaults:
+            sv_zh, sv_en, sp, mc_zh, mc_en, pr_zh, pr_en = recipe_defaults[did]
+            if pd.isna(row.get("sauce_veg_zh")) or not str(row.get("sauce_veg_zh")).strip():
+                df.at[idx, "sauce_veg_zh"] = sv_zh
+            if pd.isna(row.get("sauce_veg_en")) or not str(row.get("sauce_veg_en")).strip():
+                df.at[idx, "sauce_veg_en"] = sv_en
+            if pd.isna(row.get("std_portion_g")) or row.get("std_portion_g") in [0, 450, None]:
+                df.at[idx, "std_portion_g"] = sp
+            if pd.isna(row.get("main_carb_en")) or not str(row.get("main_carb_en")).strip():
+                df.at[idx, "main_carb_en"] = mc_en
+            if pd.isna(row.get("protein_en")) or not str(row.get("protein_en")).strip():
+                df.at[idx, "protein_en"] = pr_en
+
     if "std_portion_g" not in df.columns:
         df["std_portion_g"] = 450
 
@@ -646,6 +695,7 @@ def ensure_dish_columns(df_in, is_en=False):
     df["protein"] = df["protein_en"] if is_en else df["protein_zh"]
     df["sauce_veg"] = df["sauce_veg_en"] if is_en else df["sauce_veg_zh"]
     return df
+
 
 def ensure_reward_columns(df_in, is_en=False):
     df = df_in.copy()
@@ -1239,11 +1289,11 @@ AI 視覺系統識別當前圖片為**人物自拍、人臉肖像或非餐飲物
 
                         m_col1, m_col2, m_col3 = st.columns(3)
                         with m_col1:
-                            st.metric("Waste Ratio" if is_en else "殘食百分比", f"{waste_pct}%")
+                            st.metric("Waste %" if is_en else "殘食比例", f"{waste_pct}%")
                         with m_col2:
-                            st.metric("Waste Cost" if is_en else "估算浪費成本", f"HK$ {waste_cost}")
+                            st.metric("Waste Cost" if is_en else "浪費成本", f"HK$ {waste_cost}")
                         with m_col3:
-                            st.metric("Scope 3 CO2" if is_en else "產生碳排放", f"{waste_carbon} kg")
+                            st.metric("CO2 kg" if is_en else "碳排放量", f"{waste_carbon} kg")
 
                         if modules.get("mod4", True):
                             voucher_text, tier_name, tier_color = evaluate_customer_rewards(waste_pct, is_en=is_en)
@@ -1774,7 +1824,7 @@ def render_mode2(engine, modules, is_en=False):
                     </div>
                 </div>
                 '''
-            st.markdown(card_html, unsafe_allow_html=True)
+            st.markdown(textwrap.dedent(card_html).strip(), unsafe_allow_html=True)
 
     if modules.get("mod2", True):
         with st.container(border=True):
@@ -1828,21 +1878,22 @@ def render_mode2(engine, modules, is_en=False):
             st.dataframe(df_table, use_container_width=True, hide_index=True)
 
 def render_mode3(modules=None, is_en=False):
-    st.markdown(f"### ⚙️ {'Dynamic Menu, Branch & Reward Configuration' if is_en else '菜單、分店與獎勵規則動態管理'}")
-    
+    st.markdown(f"### ⚙️ {'Dynamic Menu, Branch & Reward Configuration' if is_en else '菜單、門市與獎勵規則動態配置'}")
+    st.caption("前端實時修改與雙語庫同步治理 · 支援前台即時編輯並寫入資料庫與 CSV" if not is_en else "Live Frontend Editor & Bilingual Governance · Edit records on the fly and save to DB/CSV.")
+
     tab_titles = []
     tab_keys = []
     
     if modules and modules.get("mod3", True):
-        tab_titles.append("🍛 Menu Management" if is_en else "🍛 菜單管理")
+        tab_titles.append("🍛 " + ("Menu Recipes" if is_en else "菜單管理"))
         tab_keys.append("menu")
         
     if modules and modules.get("mod1", True):
-        tab_titles.append("🏪 Branch Management" if is_en else "🏪 門市管理")
+        tab_titles.append("🏪 " + ("Store Branches" if is_en else "門市管理"))
         tab_keys.append("branch")
         
     if modules and modules.get("mod4", True):
-        tab_titles.append("🎁 Reward Rules" if is_en else "🎁 獎勵規則")
+        tab_titles.append("🎁 " + ("Reward Rules" if is_en else "獎勵規則"))
         tab_keys.append("reward")
         
     if not tab_titles:
@@ -1854,25 +1905,48 @@ def render_mode3(modules=None, is_en=False):
     for i, key in enumerate(tab_keys):
         with tabs[i]:
             with st.container(border=True):
+                # Language view selector for configuration tables
+                c_mode, c_hint = st.columns([2, 3])
+                with c_mode:
+                    view_choice = st.radio(
+                        "Table View" if is_en else "表格欄位視圖",
+                        ["🌐 Full Bilingual" if is_en else "🌐 完整雙語對照配置 (Full Bilingual)", "中文欄位" if is_en else "僅繁體中文 (Chinese Only)", "English Only"],
+                        index=0,
+                        horizontal=True,
+                        key=f"cfg_view_{key}"
+                    )
+                is_full = ("Full" in view_choice or "完整" in view_choice)
+                is_pure_en = ("English" in view_choice)
+
                 if key == "menu":
-                    df_dishes = get_live_dishes(is_en=is_en)
-                    if is_en:
+                    df_dishes = get_live_dishes(is_en=is_pure_en)
+                    
+                    if is_full:
+                        cols = ["dish_id", "name_zh", "name_en", "main_carb_zh", "main_carb_en", "protein_zh", "protein_en", "sauce_veg_zh", "sauce_veg_en", "std_portion_g"]
+                        rename_map = {
+                            "dish_id": "菜式編號 / ID",
+                            "name_zh": "餐點名稱 (中文)",
+                            "name_en": "Recipe Name (EN)",
+                            "main_carb_zh": "主食澱粉 (中)",
+                            "main_carb_en": "Primary Starch (EN)",
+                            "protein_zh": "蛋白質肉類 (中)",
+                            "protein_en": "Primary Protein (EN)",
+                            "sauce_veg_zh": "配菜與醬汁 (中)",
+                            "sauce_veg_en": "Sauce & Garnish (EN)",
+                            "std_portion_g": "標準份量 (g)"
+                        }
+                    elif is_pure_en:
                         cols = ["dish_id", "name_en", "main_carb_en", "protein_en", "sauce_veg_en", "std_portion_g"]
-                        available_cols = [c for c in cols if c in df_dishes.columns]
-                        df_show = df_dishes[available_cols].copy()
                         rename_map = {
                             "dish_id": "Dish ID",
                             "name_en": "Recipe Item",
-                            "main_carb_en": "Primary Starch (Carbs)",
+                            "main_carb_en": "Primary Starch",
                             "protein_en": "Primary Protein",
                             "sauce_veg_en": "Sauce & Garnish",
                             "std_portion_g": "Std Serving (g)"
                         }
-                        df_show = df_show.rename(columns=rename_map)
                     else:
                         cols = ["dish_id", "name_zh", "main_carb_zh", "protein_zh", "sauce_veg_zh", "std_portion_g"]
-                        available_cols = [c for c in cols if c in df_dishes.columns]
-                        df_show = df_dishes[available_cols].copy()
                         rename_map = {
                             "dish_id": "菜式編號",
                             "name_zh": "餐點名稱",
@@ -1881,15 +1955,62 @@ def render_mode3(modules=None, is_en=False):
                             "sauce_veg_zh": "配菜與醬汁",
                             "std_portion_g": "標準出餐量 (g)"
                         }
-                        df_show = df_show.rename(columns=rename_map)
-                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                    
+                    avail_cols = [c for c in cols if c in df_dishes.columns]
+                    df_edit_src = df_dishes[avail_cols].copy().rename(columns=rename_map)
+
+                    st.markdown("##### 📝 " + ("Interactive Recipe Master Table (Editable)" if is_en else "互動式菜單配置編輯表（點擊儲存格可直接修改）"))
+                    edited_dishes = st.data_editor(
+                        df_edit_src,
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="dynamic",
+                        key="editor_dishes_grid"
+                    )
+
+                    c_btn, c_info = st.columns([1, 3])
+                    with c_btn:
+                        if st.button("💾 " + ("Save Recipe Changes" if is_en else "保存菜單設定至資料庫與 CSV"), key="btn_save_dish_cfg", type="primary"):
+                            rev_map = {v: k for k, v in rename_map.items()}
+                            df_to_save = edited_dishes.rename(columns=rev_map)
+                            # Sync full columns back into master
+                            for col in df_to_save.columns:
+                                df_dishes[col] = df_to_save[col]
+                            
+                            try:
+                                df_dishes.to_csv(DISH_FILE, index=False, encoding="utf-8")
+                                conn = db_conn()
+                                df_dishes.to_sql("dishes", conn, if_exists="replace", index=False)
+                                conn.close()
+                                get_live_dishes.clear()
+                                st.success("✅ " + ("Recipe master updated and synced across all engines!" if is_en else "菜單配置已成功保存並即時同步至全系統！"))
+                                time.sleep(0.5)
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Save error: {ex}")
 
                 elif key == "branch":
-                    df_branches = get_live_branches(is_en=is_en)
-                    if is_en:
+                    df_branches = get_live_branches(is_en=is_pure_en)
+                    
+                    if is_full:
+                        cols = ["branch_id", "name_zh", "name_en", "level_zh", "level_en", "district_zh", "district_en", "traffic_zh", "traffic_en", "avg_covers", "base_rice_g", "strategy_zh", "strategy_en"]
+                        rename_map = {
+                            "branch_id": "分店編號 / ID",
+                            "name_zh": "門市名稱 (中文)",
+                            "name_en": "Branch Name (EN)",
+                            "level_zh": "門市等級 (中)",
+                            "level_en": "Store Tier (EN)",
+                            "district_zh": "行政分區 (中)",
+                            "district_en": "District (EN)",
+                            "traffic_zh": "客群人流 (中)",
+                            "traffic_en": "Demographics (EN)",
+                            "avg_covers": "日均翻檯 (盤)",
+                            "base_rice_g": "基準飯量 (g)",
+                            "strategy_zh": "營運策略 (中)",
+                            "strategy_en": "Operations Strategy (EN)"
+                        }
+                    elif is_pure_en:
                         cols = ["branch_id", "name_en", "level_en", "district_en", "traffic_en", "avg_covers", "base_rice_g", "strategy_en"]
-                        available_cols = [c for c in cols if c in df_branches.columns]
-                        df_show = df_branches[available_cols].copy()
                         rename_map = {
                             "branch_id": "Branch ID",
                             "name_en": "Branch Name",
@@ -1900,11 +2021,8 @@ def render_mode3(modules=None, is_en=False):
                             "base_rice_g": "Base Rice (g)",
                             "strategy_en": "Operations Strategy"
                         }
-                        df_show = df_show.rename(columns=rename_map)
                     else:
                         cols = ["branch_id", "name_zh", "level_zh", "district_zh", "traffic_zh", "avg_covers", "base_rice_g", "strategy_zh"]
-                        available_cols = [c for c in cols if c in df_branches.columns]
-                        df_show = df_branches[available_cols].copy()
                         rename_map = {
                             "branch_id": "分店編號",
                             "name_zh": "分店名稱",
@@ -1915,17 +2033,56 @@ def render_mode3(modules=None, is_en=False):
                             "base_rice_g": "基準飯量 (g)",
                             "strategy_zh": "營運策略"
                         }
-                        df_show = df_show.rename(columns=rename_map)
-                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                        
+                    avail_cols = [c for c in cols if c in df_branches.columns]
+                    df_edit_src = df_branches[avail_cols].copy().rename(columns=rename_map)
+
+                    st.markdown("##### 📝 " + ("Interactive Store Master Table (Editable)" if is_en else "互動式門市配置編輯表（點擊儲存格可直接修改）"))
+                    edited_branches = st.data_editor(
+                        df_edit_src,
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="dynamic",
+                        key="editor_branches_grid"
+                    )
+
+                    c_btn, c_info = st.columns([1, 3])
+                    with c_btn:
+                        if st.button("💾 " + ("Save Branch Changes" if is_en else "保存門市設定至資料庫與 CSV"), key="btn_save_branch_cfg", type="primary"):
+                            rev_map = {v: k for k, v in rename_map.items()}
+                            df_to_save = edited_branches.rename(columns=rev_map)
+                            for col in df_to_save.columns:
+                                df_branches[col] = df_to_save[col]
+                            
+                            try:
+                                df_branches.to_csv(BRANCH_FILE, index=False, encoding="utf-8")
+                                conn = db_conn()
+                                df_branches.to_sql("branches", conn, if_exists="replace", index=False)
+                                conn.close()
+                                get_live_branches.clear()
+                                st.success("✅ " + ("Store branches updated and synced live!" if is_en else "分店配置已成功保存並即時同步至全系統！"))
+                                time.sleep(0.5)
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Save error: {ex}")
 
                 elif key == "reward":
-                    df_rewards = get_live_rewards(is_en=is_en)
-                    if is_en:
+                    df_rewards = get_live_rewards(is_en=is_pure_en)
+                    
+                    if is_full:
+                        cols = ["reward_id", "tier_name_zh", "tier_name_en", "max_waste_ratio", "reward_type", "reward_description_zh", "reward_description_en", "is_active"]
+                        rename_map = {
+                            "reward_id": "獎勵代號 / ID",
+                            "tier_name_zh": "獎勵等級 (中)",
+                            "tier_name_en": "Reward Tier (EN)",
+                            "max_waste_ratio": "最高殘食率 (%)",
+                            "reward_type": "獎勵類型",
+                            "reward_description_zh": "獎勵內容細則 (中)",
+                            "reward_description_en": "Reward Details (EN)",
+                            "is_active": "啟用狀態"
+                        }
+                    elif is_pure_en:
                         cols = ["reward_id", "tier_name_en", "max_waste_ratio", "reward_type", "reward_description_en", "is_active"]
-                        available_cols = [c for c in cols if c in df_rewards.columns]
-                        df_show = df_rewards[available_cols].copy()
-                        if "is_active" in df_show.columns:
-                            df_show["is_active"] = df_show["is_active"].apply(lambda x: "Active" if x else "Inactive")
                         rename_map = {
                             "reward_id": "Reward ID",
                             "tier_name_en": "Reward Tier",
@@ -1934,13 +2091,8 @@ def render_mode3(modules=None, is_en=False):
                             "reward_description_en": "Reward Details",
                             "is_active": "Status"
                         }
-                        df_show = df_show.rename(columns=rename_map)
                     else:
                         cols = ["reward_id", "tier_name_zh", "max_waste_ratio", "reward_type", "reward_description_zh", "is_active"]
-                        available_cols = [c for c in cols if c in df_rewards.columns]
-                        df_show = df_rewards[available_cols].copy()
-                        if "is_active" in df_show.columns:
-                            df_show["is_active"] = df_show["is_active"].apply(lambda x: "已啟用" if x else "已停用")
                         rename_map = {
                             "reward_id": "獎勵代號",
                             "tier_name_zh": "獎勵等級",
@@ -1949,8 +2101,39 @@ def render_mode3(modules=None, is_en=False):
                             "reward_description_zh": "獎勵內容細則",
                             "is_active": "啟用狀態"
                         }
-                        df_show = df_show.rename(columns=rename_map)
-                    st.dataframe(df_show, use_container_width=True, hide_index=True)
+                        
+                    avail_cols = [c for c in cols if c in df_rewards.columns]
+                    df_edit_src = df_rewards[avail_cols].copy().rename(columns=rename_map)
+
+                    st.markdown("##### 📝 " + ("Interactive Loyalty Rules Table (Editable)" if is_en else "互動式獎勵規則編輯表（點擊儲存格可直接修改）"))
+                    edited_rewards = st.data_editor(
+                        df_edit_src,
+                        use_container_width=True,
+                        hide_index=True,
+                        num_rows="dynamic",
+                        key="editor_rewards_grid"
+                    )
+
+                    c_btn, c_info = st.columns([1, 3])
+                    with c_btn:
+                        if st.button("💾 " + ("Save Reward Rules" if is_en else "保存獎勵規則至資料庫與 CSV"), key="btn_save_reward_cfg", type="primary"):
+                            rev_map = {v: k for k, v in rename_map.items()}
+                            df_to_save = edited_rewards.rename(columns=rev_map)
+                            for col in df_to_save.columns:
+                                df_rewards[col] = df_to_save[col]
+                            
+                            try:
+                                df_rewards.to_csv(REWARD_FILE, index=False, encoding="utf-8")
+                                conn = db_conn()
+                                df_rewards.to_sql("rewards", conn, if_exists="replace", index=False)
+                                conn.close()
+                                get_live_rewards.clear()
+                                st.success("✅ " + ("Loyalty reward rules saved and synced live!" if is_en else "獎勵規則已成功保存並即時同步至全系統！"))
+                                time.sleep(0.5)
+                                st.rerun()
+                            except Exception as ex:
+                                st.error(f"Save error: {ex}")
+
 
 # ==============================================================================
 def main():

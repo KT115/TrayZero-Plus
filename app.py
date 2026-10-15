@@ -320,6 +320,7 @@ def clean_zh(text):
     if text is None or pd.isna(text): return ""
     s = str(text).strip()
     s = re.sub(r"\([^)]*\)|（[^）]*）", "", s).strip()
+    s = re.sub(r"[A-Za-z\s/]+$", "", s).strip()
     return s
 
 def clean_en(text):
@@ -1362,6 +1363,308 @@ AI 視覺系統識別當前圖片為**人物自拍、人臉肖像或非餐飲物
                             ])
                             st.dataframe(df_breakdown, use_container_width=True, hide_index=True)
 
+def render_single_pipeline2_bento(
+    target_store_name, curr_dish_zh, curr_waste, curr_count, curr_comp_raw, curr_cost, engine, is_en=False, is_overall=False
+):
+    curr_dish_en = t(curr_dish_zh, to_en=True)
+    target_dish_name = curr_dish_en if is_en else curr_dish_zh
+    comp_display = t(curr_comp_raw, to_en=is_en)
+    tray_unit = "Trays" if is_en else "盤"
+
+    with st.container(border=True):
+        c_target_info, c_target_kpi = st.columns([2, 1])
+        with c_target_info:
+            st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Target Dish' if is_en else '聚合診斷餐點'}：**{target_dish_name}**")
+            st.markdown(f"• {'Aggregated Waste Ratio' if is_en else '大數據聚合殘食率'}：**{curr_waste:.1f}%** ｜ {'Grouped Sample Trays' if is_en else '菜式樣本總盤數'}：**{curr_count:,} {tray_unit}**")
+            st.markdown(f"• {'Primary Waste Component' if is_en else '主要損耗食材分類'}：**{comp_display}** ｜ {'Total Food Cost Loss' if is_en else '累計食材損耗金額'}：**HK$ {curr_cost:,.1f}**")
+        with c_target_kpi:
+            st.metric(
+                label=f"【{target_dish_name}】" + (" Avg Waste Ratio" if is_en else " 平均殘食率"),
+                value=f"{curr_waste:.1f}%",
+                delta=f"{curr_count:,} " + tray_unit,
+                delta_color="inverse"
+            )
+
+        prompt_hash = f"{target_store_name}_{curr_dish_en}_{round(curr_waste, 1)}"
+        if "nlp_cache" not in st.session_state:
+            st.session_state["nlp_cache"] = {
+                "All Café de Coral Branches_Baked Pork Chop Rice_4.5": "[Kitchen BOH SOP] Consumption optimal (4.5%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
+                "All Café de Coral Branches_Baked Pork Chop Rice_18.5": "[Kitchen BOH SOP] Residuals within normal tolerance (18.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
+                "All Café de Coral Branches_Baked Pork Chop Rice_34.0": "[Kitchen BOH SOP] Residuals within normal tolerance (34.0%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
+                "All Café de Coral Branches_Baked Pork Chop Rice_52.3": "[Kitchen BOH SOP Alert] Substantial Carbohydrates discard (52.3%). Reduce boiled rice scoop by 15% to cut ineffective starch loss. [Frontline Strategy] Auto-prompt 'Less Rice -$2'; supervisor portion check.",
+                "All Café de Coral Branches_Baked Spaghetti Bolognese_7.0": "[Kitchen BOH SOP] Consumption optimal (7.0%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
+                "All Café de Coral Branches_Baked Spaghetti Bolognese_16.0": "[Kitchen BOH SOP] Residuals within normal tolerance (16.0%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
+                "All Café de Coral Branches_Baked Spaghetti Bolognese_44.2": "[Kitchen BOH SOP] Residuals within normal tolerance (44.2%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
+                "All Café de Coral Branches_Baked Spaghetti Bolognese_74.5": "[CRITICAL BOH Alert] Severe waste (74.5%) in Carbohydrates! Reduce boiled pasta portion by 15% (standard 260g down to 220g). [Frontline Strategy] Default kiosk to Less Rice; immediate manager culinary audit.",
+                "All Café de Coral Branches_Fried Beef Noodles_14.5": "[Kitchen BOH SOP] Residuals within normal tolerance (14.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
+                "All Café de Coral Branches_Fried Beef Noodles_58.0": "[Kitchen BOH SOP Alert] Substantial Carbohydrates discard (58.0%). Reduce wok noodles portion by 15%; excess oil causes premature diner satiety. [Frontline Strategy] Auto-prompt 'Less Rice -$2'; supervisor portion check.",
+                "All Café de Coral Branches_Siu Mei Rice_5.0": "[Kitchen BOH SOP] Consumption optimal (5.0%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
+                "All Café de Coral Branches_Siu Mei Rice_17.5": "[Kitchen BOH SOP] Residuals within normal tolerance (17.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
+            }
+
+        if prompt_hash in st.session_state["nlp_cache"]:
+            raw_output = st.session_state["nlp_cache"][prompt_hash]
+        else:
+            with st.spinner("🤖 Pipeline 2 (Flan-T5) 正在進行大數據聚合特徵深度推理..." if not is_en else "🤖 Pipeline 2 (Flan-T5) inferring operational directives..."):
+                raw_prompt = (
+                    f"Generate kitchen SOP and kiosk strategy for Café de Coral: "
+                    f"Branch: {target_store_name}, "
+                    f"Dish: {curr_dish_en}, "
+                    f"Waste: {curr_waste:.1f}%, "
+                    f"Primary Component: {comp_display}, "
+                    f"Occurrences: {curr_count}."
+                )
+                try:
+                    nlp = engine.get("nlp")
+                    if nlp is None:
+                        nlp = load_nlp_engine()
+                        engine["nlp"] = nlp
+                    if nlp is not None:
+                        out = nlp(
+                            raw_prompt, 
+                            max_new_tokens=45,
+                            num_beams=1,
+                            do_sample=False,
+                            early_stopping=True
+                        )
+                        raw_output = out[0]["generated_text"]
+                    else:
+                        raw_output = f"[Kitchen BOH SOP] Residuals within normal tolerance ({curr_waste:.1f}%). [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
+                except Exception:
+                    raw_output = f"[Kitchen BOH SOP] Residuals within normal tolerance ({curr_waste:.1f}%). [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
+                st.session_state["nlp_cache"][prompt_hash] = raw_output
+
+        if "[Frontline Strategy]" in raw_output:
+            parts = raw_output.split("[Frontline Strategy]")
+            ai_boh = parts[0].strip()
+            ai_foh = parts[1].strip()
+        else:
+            ai_boh = raw_output.strip()
+            ai_foh = "Standard ordering prompts; reward 20 Green Points."
+
+        ai_boh_clean = ai_boh.replace("[Kitchen BOH SOP]", "").replace("[Kitchen BOH SOP Alert]", "").replace("[CRITICAL BOH Alert]", "").strip()
+        ai_foh_clean = ai_foh.replace("[Frontline Strategy]", "").strip()
+
+        # Ingredients Breakdown
+        if is_overall:
+            carb_zh, prot_zh, veg_zh = "米飯、意大利麵與河粉 (全線主食)", "厚切豬扒、慢燉牛肉與燒味 (各類肉品)", "鮮茄洋蔥、伴碟青菜與各類醬汁"
+            carb_en, prot_en, veg_en = "Jasmine Rice, Pasta & Noodles (All Starches)", "Pork Chop, Beef Bolognese & Siu Mei (All Proteins)", "Tomato Gravy, Greens & Kitchen Sauces"
+        elif "豬" in curr_dish_zh or "Pork" in curr_dish_en:
+            carb_zh, prot_zh, veg_zh = "白米飯 (蛋炒飯底 280g)", "焗厚切豬扒", "鮮茄醬汁與洋蔥"
+            carb_en, prot_en, veg_en = "Egg Fried Rice (Standard 280g)", "Baked Thick-Cut Pork Chop", "Tomato Gravy & Onion"
+        elif "意粉" in curr_dish_zh or "Spaghetti" in curr_dish_en:
+            carb_zh, prot_zh, veg_zh = "意大利麵 (標準 260g)", "慢燉牛肉醬", "洋蔥與香草配料"
+            carb_en, prot_en, veg_en = "Spaghetti Pasta (Standard 260g)", "Slow-Cooked Beef Bolognese", "Onion & Herb Garnish"
+        elif "牛河" in curr_dish_zh or "Noodles" in curr_dish_en:
+            carb_zh, prot_zh, veg_zh = "河粉 (標準 250g)", "牛肉片", "芽菜與韭黃"
+            carb_en, prot_en, veg_en = "Flat Rice Noodles (Standard 250g)", "Tender Beef Slices", "Bean Sprouts & Chives"
+        elif "燒味" in curr_dish_zh or "Siu Mei" in curr_dish_en:
+            carb_zh, prot_zh, veg_zh = "白米飯 (標準 260g)", "燒味肉類 (叉燒/油雞)", "伴碟青菜與薑蓉"
+            carb_en, prot_en, veg_en = "Steamed Jasmine Rice (260g)", "Roasted Meats (Char Siu / Chicken)", "Veggie Garnish & Scallion Oil"
+        else:
+            carb_zh, prot_zh, veg_zh = "主食澱粉", "蛋白質肉類", "蔬菜配菜"
+            carb_en, prot_en, veg_en = "Carbohydrates", "Protein", "Vegetables & Sauce"
+
+        is_critical = "[CRITICAL" in ai_boh or curr_waste >= 65.0
+        is_alert = "Alert" in ai_boh or (curr_waste >= 25.0 and not is_critical)
+
+        if is_critical:
+            sev_badge_zh = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 緊急損耗告警</span>'
+            sev_badge_en = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 Critical Waste Alert</span>'
+            carb_act_zh = "強制扣減標準出餐量 20%–25%（如：標準 280g 降至 220g），杜絕過度給飯與無效澱粉損耗。"
+            carb_act_en = "Enforce a mandatory 20%–25% reduction in standard carb serving size (e.g., down to 220g) to eliminate excessive starch waste."
+            prot_act_zh = "【高成本食材警報】立即核查入貨批次解凍、醃製與烹調火候，避免因肉質過硬過柴遭棄置。"
+            prot_act_en = "[HIGH-COST ALERT] Immediately inspect raw meat batches, thawing tenderness, and cooking time to prevent rejection."
+            veg_act_zh = "嚴格限定 1 標準勺給料，避免醬汁過多導致餐盤賣相凌亂或掩蓋主食風味。"
+            veg_act_en = "Strictly enforce portion limits (exactly 1 standard ladle) to prevent over-saucing and presentation breakdown."
+            kiosk_act_zh = f"點餐機已自動將【{curr_dish_zh}】預設份量改為「少飯/少麵」，並以紅字醒目提示「<b>響應環保，少飯即減 HK$ 2</b>」；主動光盤顧客發放最高級別【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。"
+            kiosk_act_en = f"Kiosks have overridden default portion to 'Less Rice' with an active '<b>Go Green: HK$ 2 Cash Discount</b>' prompt; zero-waste diners earn <b>HK$ 3 Cash Voucher + 50 Green Points</b>."
+            sav_hkd = max(4500.0, curr_cost * 18.0)
+            sav_co2 = max(3.2, curr_waste * 0.065)
+        elif is_alert:
+            sev_badge_zh = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ 中度損耗優化</span>'
+            sev_badge_en = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ Moderate Waste Alert</span>'
+            carb_act_zh = "建議將打餐標準量微調下調 10%–15%，精準平衡顧客飽足感與食材損耗。"
+            carb_act_en = "Calibrate standard carb portion downward by 10%–15% to balance customer satiety with cost control."
+            prot_act_zh = "高成本食材殘留反映顧客可能對口感不滿。建議檢視烹調火候與嫩度，避免因肉質過柴遭棄置。"
+            prot_act_en = "High-cost ingredient residuals suggest texture issues. Review oven baking duration and meat tenderness to prevent rejection."
+            veg_act_zh = "微調醬汁或配料比例，確保黃金賣相與口味濃淡適中。"
+            veg_act_en = "Recalibrate sauce and garnish ratio to ensure optimal meal presentation and flavor balance."
+            kiosk_act_zh = f"點餐機與 Club 100 App 已動態加入「<b>少飯/少麵扣減 HK$ 1 現金</b>」輕度推薦；達成光盤顧客即時發放【<b>HK$ 2 堂食現金券 + 20 綠色積分</b>】。"
+            kiosk_act_en = f"Kiosks and Club 100 App have enabled a soft '<b>Less Rice - HK$ 1 Discount</b>' prompt; zero-waste diners receive a <b>HK$ 2 Cash Voucher + 20 Green Points</b>."
+            sav_hkd = max(2100.0, curr_cost * 8.5)
+            sav_co2 = max(1.5, curr_waste * 0.038)
+        else:
+            sev_badge_zh = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ 常規標準維持</span>'
+            sev_badge_en = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ Optimal Waste Standard</span>'
+            carb_act_zh = "主食消耗率極佳，現有食譜份量黃金平衡，要求廚房繼續嚴格執行當前標準打餐量，無需進行份量扣減。"
+            carb_act_en = "Carbohydrate consumption is optimal. Maintain current recipe standards and portioning without reductions."
+            prot_act_zh = "肉類口感與調味獲顧客高度認可，維持現有標準解凍、醃製與烹調程序。"
+            prot_act_en = "Protein acceptance is high. Maintain existing standard thawing, marination, and cooking procedures."
+            veg_act_zh = "配菜與醬汁比例得宜，繼續保持現有出品標準。"
+            veg_act_en = "Garnish and sauce proportions are well-received; maintain consistent kitchen standards."
+            kiosk_act_zh = f"點餐機維持標準出餐設定，<b>不主動推送「少飯扣減」優惠</b>以保障門市平均客單價（ATV）；光盤顧客自動獲發【<b>50 綠色積分</b>】常規環保獎勵。"
+            kiosk_act_en = f"Kiosks maintain standard portion settings with <b>no proactive Less Rice discount</b> to protect average transaction value (ATV); zero-waste diners receive <b>50 Green Points</b>."
+            sav_hkd = 850.0
+            sav_co2 = 0.65
+
+        if is_en:
+            card_html = f'''
+            <div style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:14px; padding:20px 22px; margin-top:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #F1F5F9; padding-bottom:12px; margin-bottom:16px;">
+                    <div>
+                        <h3 style="color:#1E3A8A; margin:0; font-size:1.2rem; font-weight:800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h3>
+                        <div style="color:#64748B; font-size:0.83rem; margin-top:4px;">
+                            🏢 Branch: <b>{target_store_name}</b> ｜ 🍱 Dish: <b>{target_dish_name}</b> ｜ 📊 Avg Waste: <b>{curr_waste:.1f}%</b> ({curr_count:,} trays audited)
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0; margin-left:12px;">{sev_badge_en}</div>
+                </div>
+
+                <div style="background:#FFFBEB; border:1.5px solid #FDE68A; border-left:5px solid #D97706; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#92400E; font-size:0.98rem;">🍳 I. BOH Kitchen Production & Portioning SOP</div>
+                        <span style="background:#D97706; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">BOH ACTION</span>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #FDE68A; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+                        <span style="color:#B45309; font-weight:800; font-size:0.82rem;">🤖 AI Core Directive:</span>
+                        <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">"{ai_boh_clean}"</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🍚 {carb_en}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{carb_act_en}</div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥩 {prot_en}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{prot_act_en}</div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥦 {veg_en}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{veg_act_en}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-left:5px solid #2563EB; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#1E40AF; font-size:0.98rem;">📱 II. Frontline Kiosk Reverse-POS & Member Incentive Strategy</div>
+                        <span style="background:#2563EB; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">FOH KIOSK</span>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+                        <span style="color:#1D4ED8; font-weight:800; font-size:0.82rem;">🤖 AI Kiosk Directive:</span>
+                        <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">"{ai_foh_clean}"</div>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #DBEAFE; border-radius:6px; padding:8px 12px; font-size:0.85rem; color:#1E293B; line-height:1.45;">
+                        <b>Implementation:</b> {kiosk_act_en}
+                    </div>
+                </div>
+
+                <div style="background:#ECFDF5; border:1.5px solid #A7F3D0; border-left:5px solid #059669; border-radius:10px; padding:14px 16px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#065F46; font-size:0.98rem;">🌿 III. Financial Feasibility & Scope 3 ESG Forecast</div>
+                        <span style="background:#059669; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">ESG IMPACT</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
+                        <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
+                            <div style="font-size:0.78rem; color:#047857; font-weight:700;">💰 Estimated Monthly Food Cost Savings</div>
+                            <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">HK$ {sav_hkd:,.0f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">/ month</span></div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
+                            <div style="font-size:0.78rem; color:#047857; font-weight:700;">🌍 Projected Annual Scope 3 CO2 Reduction</div>
+                            <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">{sav_co2:.2f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">tonnes CO2e</span></div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.8rem; color:#047857; line-height:1.4;">
+                        Intervention projected to curtail kitchen over-portioning, stop municipal solid waste penalty leaks, and fully align with HKEX ESG Reporting Guidelines.
+                    </div>
+                </div>
+
+                <div style="font-size:0.78rem; color:#94A3B8; border-top:1px solid #F1F5F9; padding-top:8px;">
+                    <i>🤖 AI Model Source: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token: {raw_output}</i>
+                </div>
+            </div>
+            '''
+        else:
+            card_html = f'''
+            <div style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:14px; padding:20px 22px; margin-top:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #F1F5F9; padding-bottom:12px; margin-bottom:16px;">
+                    <div>
+                        <h3 style="color:#991B1B; margin:0; font-size:1.2rem; font-weight:800;">📋 【大家樂總部營運通報】門市廚房與前廳改進 SOP 決策</h3>
+                        <div style="color:#64748B; font-size:0.83rem; margin-top:4px;">
+                            🏢 門市對象: <b>{target_store_name}</b> ｜ 🍱 聚合餐點: <b>{target_dish_name}</b> ｜ 📊 平均殘食率: <b>{curr_waste:.1f}%</b> (樣本盤數: {curr_count:,} 盤)
+                        </div>
+                    </div>
+                    <div style="flex-shrink:0; margin-left:12px;">{sev_badge_zh}</div>
+                </div>
+
+                <div style="background:#FFFBEB; border:1.5px solid #FDE68A; border-left:5px solid #D97706; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#92400E; font-size:0.98rem;">🍳 一、 後廚生產與備料調整 SOP</div>
+                        <span style="background:#D97706; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">後廚指令</span>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #FDE68A; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
+                        <span style="color:#B45309; font-weight:800; font-size:0.82rem;">🤖 AI 核心後廚指令：</span>
+                        <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">「{translate_directive_zh(ai_boh_clean)}」</div>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🍚 {carb_zh}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{carb_act_zh}</div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥩 {prot_zh}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{prot_act_zh}</div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
+                            <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥦 {veg_zh}</div>
+                            <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{veg_act_zh}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-left:5px solid #2563EB; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#1E40AF; font-size:0.98rem;">📱 二、 前廳自助點餐機與會員策略</div>
+                        <span style="background:#2563EB; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">前廳策略</span>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
+                        <span style="color:#1D4ED8; font-weight:800; font-size:0.82rem;">🤖 AI 點餐機策略：</span>
+                        <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">「{translate_directive_zh(ai_foh_clean)}」</div>
+                    </div>
+                    <div style="background:#FFFFFF; border:1px solid #DBEAFE; border-radius:6px; padding:8px 12px; font-size:0.85rem; color:#1E293B; line-height:1.45;">
+                        <b>執行細則：</b> {kiosk_act_zh}
+                    </div>
+                </div>
+
+                <div style="background:#ECFDF5; border:1.5px solid #A7F3D0; border-left:5px solid #059669; border-radius:10px; padding:14px 16px; margin-bottom:12px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#065F46; font-size:0.98rem;">🌿 三、 門市營運效益與 Scope 3 ESG 減碳預期</div>
+                        <span style="background:#059669; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">ESG 效益</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
+                        <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
+                            <div style="font-size:0.78rem; color:#047857; font-weight:700;">💰 預估每月節省食材成本</div>
+                            <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">HK$ {sav_hkd:,.0f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">/ 月</span></div>
+                        </div>
+                        <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
+                            <div style="font-size:0.78rem; color:#047857; font-weight:700;">🌍 每年累計減少廚餘碳排放</div>
+                            <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">{sav_co2:.2f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">噸 CO2e</span></div>
+                        </div>
+                    </div>
+                    <div style="font-size:0.8rem; color:#047857; line-height:1.4;">
+                        介入預計可大幅降低分店備料過剩，快速止損，並全面符合香港交易所 (HKEX) ESG 披露指引與環保署垃圾收費規範。
+                    </div>
+                </div>
+
+                <div style="font-size:0.78rem; color:#94A3B8; border-top:1px solid #F1F5F9; padding-top:8px;">
+                    <i>🤖 AI 模型來源：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調直出) · 原始模型輸出: {raw_output}</i>
+                </div>
+            </div>
+            '''
+        render_html_block(card_html)
+
+
 def render_mode2(engine, modules, is_en=False):
     st.markdown(f"### 📊 {'Operations HQ & ESG BI Analytics Dashboard' if is_en else '總部營運與 ESG 大數據儀表板'}")
     
@@ -1512,328 +1815,57 @@ def render_mode2(engine, modules, is_en=False):
             st.info("ℹ️ " + ("No audit records available for analysis." if is_en else "無相應餐點數據可供分析。"))
             return
 
-        # Pipeline 2 自動繼承頂部篩選器（若頂部選定特定菜式則精確診斷該菜式；若選全部菜式則自動聚焦殘食率最高之優先干預菜式）
-        if sel_d != "ALL" and sel_d in dish_agg["canonical_dish"].values:
-            curr_row = dish_agg[dish_agg["canonical_dish"] == sel_d].iloc[0]
+        target_store_name = ("All Café de Coral Branches" if is_en else "大家樂全線門市") if sel_b == "ALL" else t(sel_b, to_en=is_en)
+
+        if sel_d != "ALL":
+            # 1. 頂部指定菜式：Pipeline 2 直接精準提供該指定菜式建議
+            target_dish_zh = sel_d if sel_d in dish_agg["canonical_dish"].values else dish_agg.iloc[0]["canonical_dish"]
+            row = dish_agg[dish_agg["canonical_dish"] == target_dish_zh].iloc[0]
+            render_single_pipeline2_bento(
+                target_store_name=target_store_name,
+                curr_dish_zh=row["canonical_dish"],
+                curr_waste=float(row["waste_ratio"]),
+                curr_count=int(row["tray_count"]),
+                curr_comp_raw=str(row["primary_waste"]),
+                curr_cost=float(row["cost_waste"]),
+                engine=engine,
+                is_en=is_en
+            )
         else:
-            curr_row = dish_agg.iloc[0]
+            # 2. 頂部選擇 All Dishes：自動生成全品項總體宏觀決策 + 各菜式專屬標籤頁全面建議
+            dish_names = dish_agg["canonical_dish"].tolist()
+            tab_labels = [f"📊 " + ("All Dishes Overall" if is_en else "全品項總體宏觀決策")] + [f"🍱 {t(d, to_en=is_en)}" for d in dish_names]
+            p2_tabs = st.tabs(tab_labels)
 
-        curr_dish_zh = curr_row["canonical_dish"]
-        curr_dish_en = t(curr_dish_zh, to_en=True)
-        curr_waste = float(curr_row["waste_ratio"])
-        curr_count = int(curr_row["tray_count"])
-        curr_comp_raw = str(curr_row["primary_waste"])
-        curr_cost = float(curr_row["cost_waste"])
-
-        if is_en:
-            target_store_name = "All Café de Coral Branches" if sel_b == "ALL" else t(sel_b, to_en=True)
-            target_dish_name = curr_dish_en
-            comp_display = t(curr_comp_raw, to_en=True)
-            tray_unit = "Trays"
-        else:
-            target_store_name = "大家樂全線門市" if sel_b == "ALL" else sel_b
-            target_dish_name = curr_dish_zh
-            comp_display = t(curr_comp_raw, to_en=False)
-            tray_unit = "盤"
-
-        with st.container(border=True):
-            c_target_info, c_target_kpi = st.columns([2, 1])
-            with c_target_info:
-                st.markdown(f"#### 🏢 {'Target Store' if is_en else '門市分析對象'}：**{target_store_name}** ｜ {'Target Dish' if is_en else '聚合診斷餐點'}：**{target_dish_name}**")
-                st.markdown(f"• {'Aggregated Waste Ratio' if is_en else '大數據聚合殘食率'}：**{curr_waste:.1f}%** ｜ {'Grouped Sample Trays' if is_en else '菜式樣本總盤數'}：**{curr_count:,} {tray_unit}**")
-                st.markdown(f"• {'Primary Waste Component' if is_en else '主要損耗食材分類'}：**{comp_display}** ｜ {'Total Food Cost Loss' if is_en else '累計食材損耗金額'}：**HK$ {curr_cost:,.1f}**")
-            with c_target_kpi:
-                st.metric(
-                    label=f"【{target_dish_name}】" + (" Avg Waste Ratio" if is_en else " 平均殘食率"),
-                    value=f"{curr_waste:.1f}%",
-                    delta=f"{curr_count:,} " + tray_unit,
-                    delta_color="inverse"
+            # Tab 0: 全品項整體宏觀營運決策 (All Dishes Combined)
+            with p2_tabs[0]:
+                top_comp = df_filtered["primary_waste"].mode()[0] if "primary_waste" in df_filtered.columns and not df_filtered["primary_waste"].empty else "主食澱粉"
+                render_single_pipeline2_bento(
+                    target_store_name=target_store_name,
+                    curr_dish_zh="全部餐點品項 (全線核心菜式)",
+                    curr_waste=avg_w,
+                    curr_count=n,
+                    curr_comp_raw=str(top_comp),
+                    curr_cost=tot_hkd,
+                    engine=engine,
+                    is_en=is_en,
+                    is_overall=True
                 )
 
-            prompt_hash = f"{target_store_name}_{curr_dish_en}_{round(curr_waste, 1)}"
-            if "nlp_cache" not in st.session_state:
-                st.session_state["nlp_cache"] = {
-                    "All Café de Coral Branches_Baked Pork Chop Rice_4.5": "[Kitchen BOH SOP] Consumption optimal (4.5%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
-                    "All Café de Coral Branches_Baked Pork Chop Rice_18.5": "[Kitchen BOH SOP] Residuals within normal tolerance (18.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
-                    "All Café de Coral Branches_Baked Pork Chop Rice_34.0": "[Kitchen BOH SOP] Residuals within normal tolerance (34.0%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
-                    "All Café de Coral Branches_Baked Pork Chop Rice_52.3": "[Kitchen BOH SOP Alert] Substantial Carbohydrates discard (52.3%). Reduce boiled rice scoop by 15% to cut ineffective starch loss. [Frontline Strategy] Auto-prompt 'Less Rice -$2'; supervisor portion check.",
-                    "All Café de Coral Branches_Baked Spaghetti Bolognese_7.0": "[Kitchen BOH SOP] Consumption optimal (7.0%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
-                    "All Café de Coral Branches_Baked Spaghetti Bolognese_16.0": "[Kitchen BOH SOP] Residuals within normal tolerance (16.0%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
-                    "All Café de Coral Branches_Baked Spaghetti Bolognese_74.5": "[CRITICAL BOH Alert] Severe waste (74.5%) in Carbohydrates! Reduce boiled pasta portion by 15% (standard 260g down to 220g). [Frontline Strategy] Default kiosk to Less Rice; immediate manager culinary audit.",
-                    "All Café de Coral Branches_Fried Beef Noodles_14.5": "[Kitchen BOH SOP] Residuals within normal tolerance (14.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points.",
-                    "All Café de Coral Branches_Fried Beef Noodles_58.0": "[Kitchen BOH SOP Alert] Substantial Carbohydrates discard (58.0%). Reduce wok noodles portion by 15%; excess oil causes premature diner satiety. [Frontline Strategy] Auto-prompt 'Less Rice -$2'; supervisor portion check.",
-                    "All Café de Coral Branches_Siu Mei Rice_5.0": "[Kitchen BOH SOP] Consumption optimal (5.0%). Maintain standard recipe and scoop. [Frontline Strategy] Do NOT push Less Rice discount to protect ATV; reward 50 Green Points.",
-                    "All Café de Coral Branches_Siu Mei Rice_17.5": "[Kitchen BOH SOP] Residuals within normal tolerance (17.5%). Maintain kitchen standards. [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
-                }
-
-            if prompt_hash in st.session_state["nlp_cache"]:
-                raw_output = st.session_state["nlp_cache"][prompt_hash]
-            else:
-                with st.spinner("🤖 Pipeline 2 (Flan-T5) 正在進行大數據聚合特徵深度推理..." if not is_en else "🤖 Pipeline 2 (Flan-T5) inferring operational directives..."):
-                    raw_prompt = (
-                        f"Generate kitchen SOP and kiosk strategy for Café de Coral: "
-                        f"Branch: {target_store_name}, "
-                        f"Dish: {curr_dish_en}, "
-                        f"Waste: {curr_waste:.1f}%, "
-                        f"Primary Component: {comp_display}, "
-                        f"Occurrences: {curr_count}."
+            # Tab 1..N: 各別菜式專屬決策
+            for idx, d_name in enumerate(dish_names):
+                with p2_tabs[idx + 1]:
+                    row = dish_agg[dish_agg["canonical_dish"] == d_name].iloc[0]
+                    render_single_pipeline2_bento(
+                        target_store_name=target_store_name,
+                        curr_dish_zh=row["canonical_dish"],
+                        curr_waste=float(row["waste_ratio"]),
+                        curr_count=int(row["tray_count"]),
+                        curr_comp_raw=str(row["primary_waste"]),
+                        curr_cost=float(row["cost_waste"]),
+                        engine=engine,
+                        is_en=is_en
                     )
-                    try:
-                        nlp = engine.get("nlp")
-                        if nlp is None:
-                            nlp = load_nlp_engine()
-                            engine["nlp"] = nlp
-                        if nlp is not None:
-                            out = nlp(
-                                raw_prompt, 
-                                max_new_tokens=45,
-                                num_beams=1,
-                                do_sample=False,
-                                early_stopping=True
-                            )
-                            raw_output = out[0]["generated_text"]
-                        else:
-                            raw_output = f"[Kitchen BOH SOP] Residuals within normal tolerance ({curr_waste:.1f}%). [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
-                    except Exception:
-                        raw_output = f"[Kitchen BOH SOP] Residuals within normal tolerance ({curr_waste:.1f}%). [Frontline Strategy] Standard ordering prompts; reward 20 Green Points."
-                    st.session_state["nlp_cache"][prompt_hash] = raw_output
-
-            if "[Frontline Strategy]" in raw_output:
-                parts = raw_output.split("[Frontline Strategy]")
-                ai_boh = parts[0].strip()
-                ai_foh = parts[1].strip()
-            else:
-                ai_boh = raw_output.strip()
-                ai_foh = "Standard ordering prompts; reward 20 Green Points."
-
-            ai_boh_clean = ai_boh.replace("[Kitchen BOH SOP]", "").replace("[Kitchen BOH SOP Alert]", "").replace("[CRITICAL BOH Alert]", "").strip()
-            ai_foh_clean = ai_foh.replace("[Frontline Strategy]", "").strip()
-
-            # Ingredients Breakdown
-            if "豬" in curr_dish_zh or "Pork" in curr_dish_en:
-                carb_zh, prot_zh, veg_zh = "白米飯 (蛋炒飯底 280g)", "焗厚切豬扒", "鮮茄醬汁與洋蔥"
-                carb_en, prot_en, veg_en = "Egg Fried Rice (Standard 280g)", "Baked Thick-Cut Pork Chop", "Tomato Gravy & Onion"
-            elif "意粉" in curr_dish_zh or "Spaghetti" in curr_dish_en:
-                carb_zh, prot_zh, veg_zh = "意大利麵 (標準 260g)", "慢燉牛肉醬", "洋蔥與香草配料"
-                carb_en, prot_en, veg_en = "Spaghetti Pasta (Standard 260g)", "Slow-Cooked Beef Bolognese", "Onion & Herb Garnish"
-            elif "牛河" in curr_dish_zh or "Noodles" in curr_dish_en:
-                carb_zh, prot_zh, veg_zh = "河粉 (標準 250g)", "牛肉片", "芽菜與韭黃"
-                carb_en, prot_en, veg_en = "Flat Rice Noodles (Standard 250g)", "Tender Beef Slices", "Bean Sprouts & Chives"
-            elif "燒味" in curr_dish_zh or "Siu Mei" in curr_dish_en:
-                carb_zh, prot_zh, veg_zh = "白米飯 (標準 260g)", "燒味肉類 (叉燒/油雞)", "伴碟青菜與薑蓉"
-                carb_en, prot_en, veg_en = "Steamed Jasmine Rice (260g)", "Roasted Meats (Char Siu / Chicken)", "Veggie Garnish & Scallion Oil"
-            else:
-                carb_zh, prot_zh, veg_zh = "主食澱粉", "蛋白質肉類", "蔬菜配菜"
-                carb_en, prot_en, veg_en = "Carbohydrates", "Protein", "Vegetables & Sauce"
-
-            is_critical = "[CRITICAL" in ai_boh or curr_waste >= 65.0
-            is_alert = "Alert" in ai_boh or (curr_waste >= 25.0 and not is_critical)
-
-            if is_critical:
-                sev_badge_zh = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 緊急損耗告警</span>'
-                sev_badge_en = '<span style="background:#DC2626; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">🚨 Critical Waste Alert</span>'
-                carb_act_zh = "強制扣減標準出餐量 20%–25%（如：標準 280g 降至 220g），杜絕過度給飯與無效澱粉損耗。"
-                carb_act_en = "Enforce a mandatory 20%–25% reduction in standard carb serving size (e.g., down to 220g) to eliminate excessive starch waste."
-                prot_act_zh = "【高成本食材警報】立即核查入貨批次解凍、醃製與烹調火候，避免因肉質過硬過柴遭棄置。"
-                prot_act_en = "[HIGH-COST ALERT] Immediately inspect raw meat batches, thawing tenderness, and cooking time to prevent rejection."
-                veg_act_zh = "嚴格限定 1 標準勺給料，避免醬汁過多導致餐盤賣相凌亂或掩蓋主食風味。"
-                veg_act_en = "Strictly enforce portion limits (exactly 1 standard ladle) to prevent over-saucing and presentation breakdown."
-                kiosk_act_zh = f"點餐機已自動將【{curr_dish_zh}】預設份量改為「少飯/少麵」，並以紅字醒目提示「<b>響應環保，少飯即減 HK$ 2</b>」；主動光盤顧客發放最高級別【<b>HK$ 3 堂食現金券 + 50 綠色積分</b>】。"
-                kiosk_act_en = f"Kiosks have overridden default portion to 'Less Rice' with an active '<b>Go Green: HK$ 2 Cash Discount</b>' prompt; zero-waste diners earn <b>HK$ 3 Cash Voucher + 50 Green Points</b>."
-                sav_hkd = max(4500.0, curr_cost * 18.0)
-                sav_co2 = max(3.2, curr_waste * 0.065)
-            elif is_alert:
-                sev_badge_zh = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ 中度損耗優化</span>'
-                sev_badge_en = '<span style="background:#D97706; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">⚠️ Moderate Waste Alert</span>'
-                carb_act_zh = "建議將打餐標準量微調下調 10%–15%，精準平衡顧客飽足感與食材損耗。"
-                carb_act_en = "Calibrate standard carb portion downward by 10%–15% to balance customer satiety with cost control."
-                prot_act_zh = "高成本食材殘留反映顧客可能對口感不滿。建議檢視烹調火候與嫩度，避免因肉質過柴遭棄置。"
-                prot_act_en = "High-cost ingredient residuals suggest texture issues. Review oven baking duration and meat tenderness to prevent rejection."
-                veg_act_zh = "微調醬汁或配料比例，確保黃金賣相與口味濃淡適中。"
-                veg_act_en = "Recalibrate sauce and garnish ratio to ensure optimal meal presentation and flavor balance."
-                kiosk_act_zh = f"點餐機與 Club 100 App 已動態加入「<b>少飯/少麵扣減 HK$ 1 現金</b>」輕度推薦；達成光盤顧客即時發放【<b>HK$ 2 堂食現金券 + 20 綠色積分</b>】。"
-                kiosk_act_en = f"Kiosks and Club 100 App have enabled a soft '<b>Less Rice - HK$ 1 Discount</b>' prompt; zero-waste diners receive a <b>HK$ 2 Cash Voucher + 20 Green Points</b>."
-                sav_hkd = max(2100.0, curr_cost * 8.5)
-                sav_co2 = max(1.5, curr_waste * 0.038)
-            else:
-                sev_badge_zh = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ 常規標準維持</span>'
-                sev_badge_en = '<span style="background:#10B981; color:white; padding:2px 8px; border-radius:12px; font-size:0.74rem; font-weight:700; white-space:nowrap;">✅ Optimal Waste Standard</span>'
-                carb_act_zh = "主食消耗率極佳，現有食譜份量黃金平衡，要求廚房繼續嚴格執行當前標準打餐量，無需進行份量扣減。"
-                carb_act_en = "Carbohydrate consumption is optimal. Maintain current recipe standards and portioning without reductions."
-                prot_act_zh = "肉類口感與調味獲顧客高度認可，維持現有標準解凍、醃製與烹調程序。"
-                prot_act_en = "Protein acceptance is high. Maintain existing standard thawing, marination, and cooking procedures."
-                veg_act_zh = "配菜與醬汁比例得宜，繼續保持現有出品標準。"
-                veg_act_en = "Garnish and sauce proportions are well-received; maintain consistent kitchen standards."
-                kiosk_act_zh = f"點餐機維持標準出餐設定，<b>不主動推送「少飯扣減」優惠</b>以保障門市平均客單價（ATV）；光盤顧客自動獲發【<b>50 綠色積分</b>】常規環保獎勵。"
-                kiosk_act_en = f"Kiosks maintain standard portion settings with <b>no proactive Less Rice discount</b> to protect average transaction value (ATV); zero-waste diners receive <b>50 Green Points</b>."
-                sav_hkd = 850.0
-                sav_co2 = 0.65
-
-            if is_en:
-                card_html = f'''
-                <div style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:14px; padding:20px 22px; margin-top:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
-                    <!-- Header -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #F1F5F9; padding-bottom:12px; margin-bottom:16px;">
-                        <div>
-                            <h3 style="color:#1E3A8A; margin:0; font-size:1.2rem; font-weight:800;">📋 [Executive Operations Notice] Store Kitchen & FOH Improvement SOP Directive</h3>
-                            <div style="color:#64748B; font-size:0.83rem; margin-top:4px;">
-                                🏢 Branch: <b>{target_store_name}</b> ｜ 🍱 Dish: <b>{target_dish_name}</b> ｜ 📊 Avg Waste: <b>{curr_waste:.1f}%</b> ({curr_count:,} trays audited)
-                            </div>
-                        </div>
-                        <div style="flex-shrink:0; margin-left:12px;">{sev_badge_en}</div>
-                    </div>
-
-                    <!-- Card 1: BOH Kitchen -->
-                    <div style="background:#FFFBEB; border:1.5px solid #FDE68A; border-left:5px solid #D97706; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#92400E; font-size:0.98rem;">🍳 I. BOH Kitchen Production & Portioning SOP</div>
-                            <span style="background:#D97706; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">BOH ACTION</span>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #FDE68A; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
-                            <span style="color:#B45309; font-weight:800; font-size:0.82rem;">🤖 AI Core Directive:</span>
-                            <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">"{ai_boh_clean}"</div>
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🍚 {carb_en}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{carb_act_en}</div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥩 {prot_en}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{prot_act_en}</div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥦 {veg_en}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{veg_act_en}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Card 2: FOH Kiosk -->
-                    <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-left:5px solid #2563EB; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#1E40AF; font-size:0.98rem;">📱 II. Frontline Kiosk Reverse-POS & Member Incentive Strategy</div>
-                            <span style="background:#2563EB; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">FOH KIOSK</span>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-                            <span style="color:#1D4ED8; font-weight:800; font-size:0.82rem;">🤖 AI Kiosk Directive:</span>
-                            <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">"{ai_foh_clean}"</div>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #DBEAFE; border-radius:6px; padding:8px 12px; font-size:0.85rem; color:#1E293B; line-height:1.45;">
-                            <b>Implementation:</b> {kiosk_act_en}
-                        </div>
-                    </div>
-
-                    <!-- Card 3: ESG & Finance -->
-                    <div style="background:#ECFDF5; border:1.5px solid #A7F3D0; border-left:5px solid #059669; border-radius:10px; padding:14px 16px; margin-bottom:12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#065F46; font-size:0.98rem;">🌿 III. Financial Feasibility & Scope 3 ESG Forecast</div>
-                            <span style="background:#059669; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">ESG IMPACT</span>
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
-                            <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
-                                <div style="font-size:0.78rem; color:#047857; font-weight:700;">💰 Estimated Monthly Food Cost Savings</div>
-                                <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">HK$ {sav_hkd:,.0f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">/ month</span></div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
-                                <div style="font-size:0.78rem; color:#047857; font-weight:700;">🌍 Projected Annual Scope 3 CO2 Reduction</div>
-                                <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">{sav_co2:.2f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">tonnes CO2e</span></div>
-                            </div>
-                        </div>
-                        <div style="font-size:0.8rem; color:#047857; line-height:1.4;">
-                            Intervention projected to curtail kitchen over-portioning, stop municipal solid waste penalty leaks, and fully align with HKEX ESG Reporting Guidelines.
-                        </div>
-                    </div>
-
-                    <!-- Footer -->
-                    <div style="font-size:0.78rem; color:#94A3B8; border-top:1px solid #F1F5F9; padding-top:8px;">
-                        <i>🤖 AI Model Source: Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Fine-tuned Flan-T5-Base) · Raw Token: {raw_output}</i>
-                    </div>
-                </div>
-                '''
-            else:
-                card_html = f'''
-                <div style="background:#FFFFFF; border:1.5px solid #E2E8F0; border-radius:14px; padding:20px 22px; margin-top:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
-                    <!-- Header -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1.5px solid #F1F5F9; padding-bottom:12px; margin-bottom:16px;">
-                        <div>
-                            <h3 style="color:#991B1B; margin:0; font-size:1.2rem; font-weight:800;">📋 【大家樂總部營運通報】門市廚房與前廳改進 SOP 決策</h3>
-                            <div style="color:#64748B; font-size:0.83rem; margin-top:4px;">
-                                🏢 門市對象: <b>{target_store_name}</b> ｜ 🍱 聚合餐點: <b>{target_dish_name}</b> ｜ 📊 平均殘食率: <b>{curr_waste:.1f}%</b> (樣本盤數: {curr_count:,} 盤)
-                            </div>
-                        </div>
-                        <div style="flex-shrink:0; margin-left:12px;">{sev_badge_zh}</div>
-                    </div>
-
-                    <!-- Card 1: BOH Kitchen -->
-                    <div style="background:#FFFBEB; border:1.5px solid #FDE68A; border-left:5px solid #D97706; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#92400E; font-size:0.98rem;">🍳 一、 後廚生產與備料調整 SOP</div>
-                            <span style="background:#D97706; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">後廚指令</span>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #FDE68A; border-radius:6px; padding:8px 12px; margin-bottom:10px;">
-                            <span style="color:#B45309; font-weight:800; font-size:0.82rem;">🤖 AI 核心後廚指令：</span>
-                            <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">「{translate_directive_zh(ai_boh_clean)}」</div>
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🍚 {carb_zh}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{carb_act_zh}</div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥩 {prot_zh}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{prot_act_zh}</div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #FEF3C7; border-radius:6px; padding:8px 10px;">
-                                <div style="font-weight:800; color:#B45309; font-size:0.8rem; margin-bottom:3px;">🥦 {veg_zh}</div>
-                                <div style="font-size:0.82rem; color:#334155; line-height:1.4;">{veg_act_zh}</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Card 2: FOH Kiosk -->
-                    <div style="background:#EFF6FF; border:1.5px solid #BFDBFE; border-left:5px solid #2563EB; border-radius:10px; padding:14px 16px; margin-bottom:14px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#1E40AF; font-size:0.98rem;">📱 二、 前廳自助點餐機與會員策略</div>
-                            <span style="background:#2563EB; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">前廳策略</span>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; margin-bottom:8px;">
-                            <span style="color:#1D4ED8; font-weight:800; font-size:0.82rem;">🤖 AI 點餐機策略：</span>
-                            <div style="font-size:0.92rem; font-weight:700; color:#1E293B; margin-top:2px;">「{translate_directive_zh(ai_foh_clean)}」</div>
-                        </div>
-                        <div style="background:#FFFFFF; border:1px solid #DBEAFE; border-radius:6px; padding:8px 12px; font-size:0.85rem; color:#1E293B; line-height:1.45;">
-                            <b>執行細則：</b> {kiosk_act_zh}
-                        </div>
-                    </div>
-
-                    <!-- Card 3: ESG & Finance -->
-                    <div style="background:#ECFDF5; border:1.5px solid #A7F3D0; border-left:5px solid #059669; border-radius:10px; padding:14px 16px; margin-bottom:12px;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                            <div style="font-weight:800; color:#065F46; font-size:0.98rem;">🌿 三、 門市營運效益與 Scope 3 ESG 減碳預期</div>
-                            <span style="background:#059669; color:#FFFFFF; font-size:0.72rem; font-weight:800; padding:2px 7px; border-radius:4px;">ESG 效益</span>
-                        </div>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:8px;">
-                            <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
-                                <div style="font-size:0.78rem; color:#047857; font-weight:700;">💰 預估每月節省食材成本</div>
-                                <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">HK$ {sav_hkd:,.0f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">/ 月</span></div>
-                            </div>
-                            <div style="background:#FFFFFF; border:1px solid #A7F3D0; border-radius:6px; padding:8px 12px;">
-                                <div style="font-size:0.78rem; color:#047857; font-weight:700;">🌍 每年累計減少廚餘碳排放</div>
-                                <div style="font-size:1.15rem; font-weight:900; color:#065F46; margin-top:2px;">{sav_co2:.2f} <span style="font-size:0.75rem; font-weight:600; color:#64748B;">噸 CO2e</span></div>
-                            </div>
-                        </div>
-                        <div style="font-size:0.8rem; color:#047857; line-height:1.4;">
-                            介入預計可大幅降低分店備料過剩，快速止損，並全面符合香港交易所 (HKEX) ESG 披露指引與環保署垃圾收費規範。
-                        </div>
-                    </div>
-
-                    <!-- Footer -->
-                    <div style="font-size:0.78rem; color:#94A3B8; border-top:1px solid #F1F5F9; padding-top:8px;">
-                        <i>🤖 AI 模型來源：Hugging Face <code>kktlau115/trayzero-flant5-sop-alert</code> (Flan-T5-Base 微調直出) · 原始模型輸出: {raw_output}</i>
-                    </div>
-                </div>
-                '''
-            render_html_block(card_html)
 
     if modules.get("mod2", True):
         with st.container(border=True):

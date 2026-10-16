@@ -1334,7 +1334,7 @@ AI 視覺系統識別當前圖片為**人物自拍、人臉肖像或非餐飲物
                                 f'<div style="font-size: 0.82rem; margin-top: 5px; color: #78350F; font-weight: 600;">{credited_msg}</div>'
                                 '</div>'
                             )
-                            render_html_block(card_html)
+                            render_html_block(voucher_card_html)
 
                         if modules.get("mod2", True):
                             st.markdown(f"##### 🔍 {'Macronutrient Coverage Breakdown' if is_en else '各大食材分項佔比'}")

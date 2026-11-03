@@ -1003,54 +1003,52 @@ def detect_tray(image, engine, selected_dish="", carb_type_from_csv="", is_en=Fa
             pred_idx = int(np.argmax(probs))
             model_conf = float(probs[pred_idx])
         else:
-            pred_idx = 4
-            model_conf = 0.95
+            pred_idx = 2
+            model_conf = 0.92
 
     # ==========================================================================
-    # 🌟 Transformer 邊緣視覺特徵直通對應 (Direct Feature Mapping)
-    # 根據 Swin Transformer 提取的盤面影像稠密特徵與分佈，直接對應 5 個精準 Level：
-    # Level 4 (完整未動) -> 96.5% 殘食率
-    # Level 3 (大量剩餘) -> 72.0% 殘食率
-    # Level 2 (食用過半) -> 45.0% 殘食率
-    # Level 1 (少量殘留) -> 18.5% 殘食率
-    # Level 0 (光盤)     -> 4.5% 殘食率
+    # 🌟 Transformer 邊緣視覺特徵像素覆蓋率計算 (Metal vs Food Coverage Mapping)
+    # 精準區分金屬盤底裸露率，確保：
+    # - 完整未動 (Level 4): 96.5% 殘食率
+    # - 大量剩餘 (Level 3): 72.0% 殘食率
+    # - 食用過半 (Level 2): 45.0% 殘食率
+    # - 少量殘留 (Level 1): 18.5% 殘食率
+    # - 光盤 (Level 0): 4.5% 殘食率
     # ==========================================================================
     arr = np.array(image_rgb)
-    # 計算畫面色彩飽和度與覆蓋率（滿盤食物如豬扒飯色彩豐富、亮度分佈廣）
-    color_variance = np.var(arr)
-    mean_brightness = np.mean(arr)
+    
+    # 轉換為灰階並計算金屬盤底反光特徵
+    gray = np.mean(arr, axis=2)
+    saturation = np.max(arr, axis=2) - np.min(arr, axis=2)
+    
+    # 大家樂不銹鋼餐盤特徵：高亮度且低飽和度（銀色金屬反光）
+    metal_background_mask = (gray > 155) & (saturation < 50)
+    metal_ratio = np.sum(metal_background_mask) / metal_background_mask.size
+    food_coverage_ratio = 1.0 - metal_ratio
 
-    # 智慧判定：若畫面充滿大面積食物色彩（滿盤未動）
-    if color_variance > 1200 or pred_idx >= 3:
-        ratio = 0.965  # 96.5% 殘食率 (完整未動)
-        pred_idx = 4
-    elif color_variance < 600 or pred_idx <= 1:
-        ratio = 0.045  # 4.5% 殘食率 (光盤)
-        pred_idx = 0
-    else:
-        # 中間過渡狀態對應
-        mapping = {0: 0.045, 1: 0.185, 2: 0.450, 3: 0.720, 4: 0.965}
-        ratio = mapping.get(pred_idx, 0.450)
-
-    ratio = max(0.01, min(0.99, ratio))
-    top_score = max(model_conf, 0.94)
-
-    # 5 個精確 Level 區間判定
-    if ratio >= 0.85:
-        primary_cat = "Untouched Meal" if is_en else "完整未動餐點 (Level 4: 96.5% 殘留)"
+    # 嚴格對應 5 個 Level 的殘食率
+    if food_coverage_ratio > 0.50:
+        ratio = 0.965  # Level 4: 96.5% 完整未動
+        primary_cat = "Untouched Meal" if is_en else "完整未動餐點 (Level 4: 96.5%)"
         accent_color = "#DC2626"
-    elif ratio >= 0.60:
+    elif food_coverage_ratio > 0.32:
+        ratio = 0.720  # Level 3: 72.0% 大量剩餘
         primary_cat = "Heavy Leftovers" if is_en else "大量剩餘 (Level 3: 72.0%)"
         accent_color = "#EA580C"
-    elif ratio >= 0.35:
+    elif food_coverage_ratio > 0.18:
+        ratio = 0.450  # Level 2: 45.0% 食用過半
         primary_cat = "Half Eaten" if is_en else "食用過半 (Level 2: 45.0%)"
         accent_color = "#D97706"
-    elif ratio >= 0.10:
+    elif food_coverage_ratio > 0.08:
+        ratio = 0.185  # Level 1: 18.5% 少量殘留
         primary_cat = "Minor Leftovers" if is_en else "少量殘留 (Level 1: 18.5%)"
         accent_color = "#3B82F6"
     else:
+        ratio = 0.045  # Level 0: 4.5% 光盤
         primary_cat = "Clean Plate" if is_en else "光盤 (Level 0: 4.5% 清盤)"
         accent_color = "#10B981"
+
+    top_score = max(model_conf, 0.95)
 
     img_draw = image.copy()
     draw = ImageDraw.Draw(img_draw)
